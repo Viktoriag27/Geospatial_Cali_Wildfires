@@ -1,0 +1,344 @@
+---
+title: "Wilfires - Cities and Land cover"
+output: html_document
+date: "2025-03-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Distance from cities
+##########
+
+# Load necessary libraries
+# install.packages(c("sf", "terra", "raster", "httr", "jsonlite","FedData"))
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(matrixStats)
+library(terra)
+library(raster)
+library(httr)
+library(jsonlite)
+library(FedData)
+
+# Read Fire Data (2020 only)
+data <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
+data <- data %>% filter(YEAR_ == 2020)
+
+# Read California State Boundary
+US_States <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/ne_110m_admin_1_states/ne_110m_admin_1_states_provinces.shp")
+US_States_simple <- US_States %>% dplyr::select(name, postal, latitude, longitude, geometry)
+CA <- US_States_simple %>% filter(postal == "CA")
+
+# Read the “Places” shapefile
+# Loading this to get info about cities
+places <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/tl_2020_06_place/tl_2020_06_place.shp")
+colnames(places)
+head(places)
+
+# Reproject all layers to EPSG:3310 at the start
+data_3310 <- st_transform(data, 3310)
+CA_3310 <- st_transform(CA, 3310)
+places_ca_centroids_3310 <- st_centroid(st_transform(places, 3310)) 
+
+# Combine all fire polygons into one and compute centroid
+fire_union_3310 <- st_union(data_3310)
+fire_union_centroid_3310 <- st_centroid(fire_union_3310)
+
+# Distance from each city centroid to the fire boundary and union centroid
+places_ca_centroids_3310$dist_to_fire_boundary <- st_distance(places_ca_centroids_3310, fire_union_3310)
+places_ca_centroids_3310$dist_to_fire_union_centroid <- st_distance(places_ca_centroids_3310, fire_union_centroid_3310)
+
+# Compute centroids of individual fires and their distances to cities
+fire_centroids_3310 <- st_centroid(data_3310)
+city_fire_matrix <- st_distance(places_ca_centroids_3310, fire_centroids_3310)
+
+# Extract the nearest fire centroid distance per city
+places_ca_centroids_3310$dist_to_nearest_fire_centroid <- rowMins(city_fire_matrix)
+
+ggplot() +
+  # California boundary
+  geom_sf(data = CA_3310, fill = "white", color = "black") +
+  
+  # Fire polygons
+  geom_sf(data = data_3310, fill = "red", alpha = 0.6, color = NA) +
+  
+  # City centroids, colored by distance to boundary
+  geom_sf(
+    data = places_ca_centroids_3310,
+    aes(color = as.numeric(dist_to_fire_boundary)),
+    size = 1
+  ) +
+  
+  scale_color_viridis_c(option = "plasma") +
+  theme_minimal() +
+  labs(
+    color = "Distance to Fire (m)",
+    title = "California Fires 2020: Distance from Cities to Fire Perimeters (EPSG:3310)"
+  )
+
+
+max_dist <- max(as.numeric(places_ca_centroids_3310$dist_to_fire_boundary), na.rm = TRUE)
+
+ggplot() +
+  geom_sf(data = CA_3310, fill = "white", color = "black") +
+  geom_sf(data = data_3310, fill = "black", alpha = 0.9, color = NA) +
+  geom_sf(
+    data = places_ca_centroids_3310,
+    aes(color = as.numeric(dist_to_fire_boundary)),
+    size = 1
+  ) +
+  scale_color_gradientn(
+    colors = c("#FF0000", "#FFA500", "#808080", "#008000"),
+    breaks = c(0, 1000, 5000, 10000, 50000, 100000, 150000, max_dist),
+    labels = c("0 km", "1 km", "5 km", "10 km", "50 km", "100 km", "150 km",
+               paste0(round(max_dist/1000), " km"))
+  ) +
+  guides(
+    # Make the colorbar bigger/taller, with some padding
+    color = guide_colorbar(
+      barwidth = 1.5,    # width of the bar in "plot" units
+      barheight = 10,    # height of the bar in "plot" units
+      title.position = "top"  # puts the legend title on top
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_text(size = 12),
+    legend.text  = element_text(size = 10)
+  ) +
+  labs(
+    color = "Distance to Fire (m)",
+    title = "CA Fires 2020: Distance from Cities"
+  )
+
+
+
+#### Fire Proximity - Filter 50km
+
+# 1. Convert distance units to numeric (removing "units" class):
+places_ca_centroids_3310$dist_num <- as.numeric(places_ca_centroids_3310$dist_to_fire_boundary)
+
+# 2. Filter for distances less than 50 km (50,000 meters):
+cities_close <- places_ca_centroids_3310 %>%
+  filter(dist_num < 50000)
+
+ggplot() +
+  geom_sf(data = CA_3310, fill = "white", color = "black") +
+  geom_sf(data = data_3310, fill = "black", alpha = 0.9, color = NA) +
+  geom_sf(
+    data = cities_close,
+    aes(color = as.numeric(dist_to_fire_boundary)),
+    size = 1
+  ) +
+  scale_color_gradientn(
+    colors = c("#FF0000", "#FFA500", "#808080", "#008000")
+  ) +
+  guides(
+    # Make the colorbar bigger/taller, with some padding
+    color = guide_colorbar(
+      barwidth = 1.5,    # width of the bar in "plot" units
+      barheight = 10,    # height of the bar in "plot" units
+      title.position = "top"  # puts the legend title on top
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    legend.title = element_text(size = 12),
+    legend.text  = element_text(size = 10)
+  ) +
+  labs(
+    color = "Distance to Fire (m)",
+    title = "CA Fires 2020: Distance from Cities - Less than 50 km"
+  )
+
+
+##################
+# List those cities for reference
+
+# Ensure the distance column is numeric 
+places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+  mutate(dist_num = as.numeric(dist_to_fire_boundary))
+
+# Filter cities that are within 50 km (i.e., less than 50,000 m)
+cities_50 <- places_ca_centroids_3310 %>%
+  filter(dist_num < 50000) %>%   # 50 km threshold
+  arrange(dist_num)               # Rank in ascending order (closest first)
+
+# Extract a list with city names, distances, and coordinates
+cities_list <- dplyr::select(st_drop_geometry(cities_50), NAME, dist_num)
+
+print(cities_list)
+
+
+############
+# LAND USAGE
+############
+
+# nlcd_url <- "https://tiledimageservices2.arcgis.com/Uq9r85Potqm3MfRV/arcgis/rest/services/nlcd_2019_land_cover_ca_wm/ImageServer?f=pjson"
+# 
+# # Fetch metadata
+# nlcd_metadata <- fromJSON(nlcd_url)
+# print(nlcd_metadata)
+# 
+# # Define bounding box (xmin, ymin, xmax, ymax in lat/lon)
+# bbox <- "-125, 32, -114, 42"  # Approximate bounding box for California
+# # 
+
+####NEW RASTER
+######
+# Load NLCD raster
+nlcd_raster <- rast("/Users/macbookpro/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/Annual_NLCD_LndCov_2020_CU_C1V0.tif")
+
+# Load California boundary and reproject to match raster CRS
+CA <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/ne_110m_admin_1_states/ne_110m_admin_1_states_provinces.shp") %>%
+  filter(postal == "CA") %>%
+  st_transform(crs(nlcd_raster))
+
+# Convert California boundary to terra format and crop raster
+nlcd_ca <- crop(nlcd_raster, vect(CA), mask = TRUE)
+
+# Visualize and save cropped raster
+plot(nlcd_ca, main = "NLCD Land Cover - California (2020)")
+writeRaster(nlcd_ca, "NLCD_2020_California.tif", overwrite = TRUE)
+
+# Load California Land Cover Raster
+nlcd_ca <- rast("/Users/macbookpro/NLCD_2020_California.tif")
+
+# Load and clean 2020 fire perimeters, ensuring CRS consistency
+fire_perimeters <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp") %>%
+  filter(YEAR_ == 2020) %>%
+  st_make_valid() %>%
+  filter(!st_is_empty(.)) %>%
+  st_transform(crs(nlcd_raster))
+
+# Convert fire perimeters to terra vector format
+fire_vect <- vect(fire_perimeters)
+
+# Extract land cover data intersecting fires
+landcover_fire_extract <- terra::extract(nlcd_ca, fire_vect)
+
+# Convert extracted data to a dataframe and rename columns
+landcover_fire_data <- data.frame(landcover_fire_extract)
+colnames(landcover_fire_data) <- c("ID", "Land_Cover_Type")
+
+# Summarize extracted land cover data
+landcover_summary <- landcover_fire_data %>%
+  group_by(Land_Cover_Type) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
+
+print(landcover_summary)
+
+# # Convert raster to dataframe for plotting
+# nlcd_df <- as.data.frame(nlcd_ca, xy = TRUE, cells = TRUE)
+# colnames(nlcd_df) <- c("x", "y", "Land_Cover_Type")
+
+# Reduce raster resolution
+nlcd_ca_resampled <- aggregate(nlcd_ca, fact=10, fun=modal)  # Increase `fact` if necessary
+
+# Convert to dataframe
+nlcd_df <- as.data.frame(nlcd_ca_resampled, xy = TRUE, cells = TRUE)
+colnames(nlcd_df) <- c("x", "y", "Land_Cover_Type")
+
+# Check raster categories before conversion
+print(unique(values(nlcd_ca_resampled)))
+
+# Convert raster to polygon while preserving values
+nlcd_poly <- as.polygons(nlcd_ca_resampled, dissolve = TRUE) %>%
+  st_as_sf()
+
+# Check column names
+print(colnames(nlcd_poly))
+
+# Rename the raster value column (which currently has the raster filename)
+colnames(nlcd_poly)[colnames(nlcd_poly) == "Annual_NLCD_LndCov_2020_CU_C1V0"] <- "Land_Cover_Type"
+
+# Ensure column exists
+if (!"Land_Cover_Type" %in% colnames(nlcd_poly)) {
+  stop("Land_Cover_Type column is missing in nlcd_poly. Check raster attributes.")
+}
+
+# Plot using vectorized raster
+ggplot() +
+  geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Type)), color = NA) +
+  geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
+  labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
+       fill = "Land Cover Type") +
+  theme_minimal()
+
+
+# Define land cover type labels correctly
+land_cover_labels <- data.frame(
+  Land_Cover_Type = c(11, 12, 21, 22, 23, 24, 31, 41, 42, 43, 52, 71, 81, 82, 90, 95),
+  Land_Cover_Name = c("Open Water", "Perennial Ice/Snow", "Developed, Open Space",
+                      "Developed, Low Intensity", "Developed, Medium Intensity",
+                      "Developed, High Intensity", "Barren Land",
+                      "Deciduous Forest", "Evergreen Forest", "Mixed Forest",
+                      "Shrub/Scrub", "Grassland/Herbaceous", "Pasture/Hay",
+                      "Cultivated Crops", "Woody Wetlands",
+                      "Emergent Herbaceous Wetlands")
+)
+
+
+# # Ensure raster values are preserved before converting to polygons
+# nlcd_poly <- as.polygons(nlcd_ca_resampled, dissolve = TRUE) %>%
+#   st_as_sf()
+# 
+# # Rename raster column to match previous use
+# colnames(nlcd_poly)[colnames(nlcd_poly) == "Annual_NLCD_LndCov_2020_CU_C1V0"] <- "Land_Cover_Type"
+
+# Convert Land_Cover_Type to numeric for proper merging
+nlcd_poly$Land_Cover_Type <- as.numeric(nlcd_poly$Land_Cover_Type)
+
+# Merge with land cover labels
+nlcd_poly <- left_join(nlcd_poly, land_cover_labels, by = "Land_Cover_Type")
+
+##
+#Check here if label naming works
+nlcd_poly
+##
+
+# Categorize land use for Developed vs. Natural/Other
+nlcd_poly <- nlcd_poly %>%
+  mutate(
+    Land_Use_Category = ifelse(Land_Cover_Type %in% c(21,22,23,24), 
+                               "Developed (Urban/Populated)",
+                               "Natural / Other")
+  )
+
+# Check if all labels joined correctly
+if (!"Land_Cover_Name" %in% colnames(nlcd_poly)) {
+  stop("Land_Cover_Name column is missing after merging labels.")
+}
+
+# Plot using vectorized raster
+ggplot() +
+  geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Name)), color = NA) +
+  geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
+  labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
+       fill = "Land Cover Type") +
+  theme_minimal()
+
+
+# Plot with categorized land usage
+ggplot() +
+  geom_sf(data = nlcd_poly, aes(fill = Land_Use_Category), color = NA) +
+  geom_sf(data = fire_perimeters, fill = NA, color = "red", linewidth = 0.4) +
+  scale_fill_manual(values=c("gray", "forestgreen"), name="Land Usage Type") +
+  labs(title = "California Land Cover (2020) and Fire Perimeters",
+       subtitle = "Developed vs Natural areas affected by 2020 fires",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal()
+
+
+```
