@@ -1,0 +1,252 @@
+---
+title: "GeoSpatial Final Project Weather"
+output: html_document
+date: "2025-02-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+rm(list = ls())
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(raster)
+library(lubridate)
+library(terra)
+library(vroom)
+
+```
+
+We will first load our data containing perimeters of all wildfires in California. We will then filter to just look at data from 2020. We will also load data containing the boundary of California. 
+```{r}
+# Load the libraries
+
+# Get fire data
+url <- "/vsicurl/https://github.com/Viktoriag27/Geospatial_Cali_Wildfires/raw/main/merged_fire_data/merged_fires_cleaned.shp"
+data <- st_read(url)
+
+# Get California Border shape file by getting US States
+url <- "/vsicurl/https://github.com/Viktoriag27/Geospatial_Cali_Wildfires/raw/main/CA_Outline/ne_110m_admin_1_states_provinces/ne_110m_admin_1_states_provinces.shp"
+US_States <- st_read(url)
+#too many columns, need to select fewer
+US_States_simple <- US_States %>% dplyr::select(name, postal, latitude, longitude, geometry)
+#select just CA
+CA <- US_States_simple %>% filter(postal=="CA")
+
+# Convert fire data to match California CRS
+data <- st_transform(data, crs = st_crs(CA)) 
+
+#Let's see what this looks like
+ggplot()+
+  geom_sf(data=CA, fill="lightblue", color = "black")+
+  geom_sf(data=data, color = "black") 
+```
+Now we want to add a new variable to the data that shows the duration of each fire. We will use `ALARM_DATE` and `CONT_DATE` which are the days the fire started and the days they were contained, respectively. We drop any fires that do not have a contained date as it is unclear if they were contained after Dec. 31, 2020 or they do not have data for those. 
+```{r}
+sum(is.na(data$ALARM_D))
+sum(is.na(data$CONT_DA))
+na_rows <- data %>% filter(is.na(CONT_DA))
+print(na_rows)
+
+#I will drop the fires that do not have a contained date because it is unclear if they were contained outside of 2020 or if they just do not have data for those fires. 
+data <- data %>% filter(!is.na(CONT_DA))
+
+#Make a new variable about the length of fire (in days)
+data$ALARM_DATE <- as.Date(data$ALARM_D)
+data$CONT_DATE <- as.Date(data$CONT_DA)
+data$duration <- as.numeric(data$CONT_DA - data$ALARM_D)+ 1 #we add one to each so that fires that started and were contained on the same day show up as a duration of 1. 
+
+#fill scale is number of days the fire lasted
+ggplot()+
+  geom_sf(data=CA, fill="lightblue", color = "black")+
+  geom_sf(data=data, aes(fill = duration), color = "black") +
+  scale_fill_gradient(low = "yellow", high = "red")  # Adjust gradient colors
+
+```
+
+Now that we have the duration of each fire, we also want to gather data on which months each fire occurred during. We now create 12 binary variables, 1 for each month, that designate if the fire occurred during that month. 
+```{r}
+data <- data %>%
+  mutate(
+    Jan = ifelse(month(ALARM_D) <= 1 & month(CONT_DA) >= 1, 1, 0),
+    Feb = ifelse(month(ALARM_D) <= 2 & month(CONT_DA) >= 2, 1, 0),
+    Mar = ifelse(month(ALARM_D) <= 3 & month(CONT_DA) >= 3, 1, 0),
+    Apr = ifelse(month(ALARM_D) <= 4 & month(CONT_DA) >= 4, 1, 0),
+    May = ifelse(month(ALARM_D) <= 5 & month(CONT_DA) >= 5, 1, 0),
+    Jun = ifelse(month(ALARM_D) <= 6 & month(CONT_DA) >= 6, 1, 0),
+    Jul = ifelse(month(ALARM_D) <= 7 & month(CONT_DA) >= 7, 1, 0),
+    Aug = ifelse(month(ALARM_D) <= 8 & month(CONT_DA) >= 8, 1, 0),
+    Sep = ifelse(month(ALARM_D) <= 9 & month(CONT_DA) >= 9, 1, 0),
+    Oct = ifelse(month(ALARM_D) <= 10 & month(CONT_DA) >= 10, 1, 0),
+    Nov = ifelse(month(ALARM_D) <= 11 & month(CONT_DA) >= 11, 1, 0),
+    Dec = ifelse(month(ALARM_D) <= 12 & month(CONT_DA) >= 12, 1, 0)
+  )
+
+# Sum to see how many fires in each month
+months <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+monthly_sums <- sapply(months, function(month) sum(data[[month]], na.rm = TRUE))
+monthly_sums
+
+```
+
+
+Now let's get raster data for temperature in California throughout the year. We gathered data from the U.S. National Weather Service Climate Prediction Center. Specifically daily gridded temperature analyses for maximum daily temperatures. We chose to work with this data as it was the most detailed and showed variation throughout California. When we looked at monthly averages, the national level data was not detailed enough and showed very little variation at the state level on average. 
+
+Rather than look at raster data from 365 different days in 2020, we chose to look at the 15th of each month to identify annual cyclical trends in temperature. 
+
+```{r}
+# Transform the California shapefile to match the CRS of the rasters (if needed)
+CA.r <- st_transform(CA, crs = 4326)
+
+# Define the base URL for the raster files in GitHub
+github_base <- "/vsicurl/https://github.com/Viktoriag27/Geospatial_Cali_Wildfires/raw/main/Weather/Temperature/"
+
+# List of months
+months <- c("January", "February", "March", "April", "May", "June", 
+            "July", "August", "September", "October", "November", "December")
+
+# Create a named list with the updated GitHub paths
+monthly_rasters <- setNames(
+  paste0(github_base, months, "_2020.tif"),
+  substr(months, 1, 3)  # Short names (Jan, Feb, etc.)
+)
+
+# Read all raster files into a list
+raster_list <- lapply(monthly_rasters, rast)
+
+
+desired_res <- 0.01  
+processed_rasters <- list()
+
+# Loop through each month
+for (month in names(monthly_rasters)) {
+  temp_raster <- rast(monthly_rasters[[month]])
+  template_raster <- rast(temp_raster)
+  res(template_raster) <- desired_res
+  # Resample the raster using bilinear interpolation
+  temp_raster_resampled <- resample(temp_raster, template_raster, method = "bilinear")
+  # Crop the raster to California’s extent
+  temp_raster_cropped <- crop(temp_raster_resampled, ext(CA))
+  # Rasterize California's boundary
+  CA_raster <- rasterize(vect(CA), temp_raster_cropped, field = 1)
+  # We use mask to retain only areas within California
+  temp_raster_precise <- mask(temp_raster_cropped, CA_raster)
+  processed_rasters[[month]] <- temp_raster_precise
+  # Plot our work
+  plot(temp_raster_precise, main = paste(month, "15, 2020 Max Temperature in California"), col = colorRampPalette(c("blue", "cyan", "yellow", "red"))(100))
+  
+  # Overlay California boundary
+  plot(st_geometry(CA), add = TRUE, border = "black", lwd = 2)
+  
+  # ---- Fire Data Overlay ----
+  
+  # Check if any fires occurred in this month
+  if (any(data[[month]] == 1, na.rm = TRUE)) {
+    
+    # Filter fire data for this month
+    fires_this_month <- data %>% filter(data[[month]] == 1)
+    
+    # Convert fire data to spatial object
+    if (nrow(fires_this_month) > 0) {
+      fire_sf <- st_as_sf(fires_this_month, coords = c("Longitude", "Latitude"), crs = 4326)
+      
+      # Overlay fire locations on the plot
+      plot(st_geometry(fire_sf), add = TRUE, border = "black", col = NA, pch = 16, cex = 3, lwd = 3)
+    }
+  }
+}
+
+```
+
+
+From here we will further analyze the fires occurring in July, August, and September
+
+```{r}
+library(dplyr)
+
+# Pivot the data to long format (each row represents a month and fire occurrence)
+monthly_burned_acres <- data %>%
+  select(GIS_ACR, Jan:Dec) %>%  # Select the relevant columns (acres and month columns)
+  pivot_longer(cols = Jan:Dec, names_to = "Month", values_to = "FireOccurred") %>%  # Reshape data to long format
+  filter(FireOccurred == 1) %>%  # Keep only the rows where a fire occurred (FireOccurred == 1)
+  group_by(Month) %>%  # Group by month
+  summarize(Total_Acres_Burned = sum(GIS_ACRES, na.rm = TRUE)) %>%  # Sum GIS_ACRES where fire occurred
+  arrange(desc(Total_Acres_Burned))  # Sort from highest to lowest
+
+# Print the summary of total acres burned per month
+print(monthly_burned_acres)
+
+```
+
+
+
+
+```{r}
+# Initialize a column for average temperature in the fire dataset
+data$avg_temp <- NA
+
+# Loop through each month
+for (month in names(processed_rasters)) {
+  
+  # Load the processed temperature raster for the current month
+  temp_raster <- processed_rasters[[month]]
+  
+  # Ensure fire data CRS matches raster CRS
+  data <- st_transform(data, crs = crs(temp_raster))
+
+  # Filter fires that occurred in this month
+  fires_this_month <- data %>% filter(.data[[month]] == 1)
+  
+  if (nrow(fires_this_month) > 0) {
+    
+    # Convert fire polygons to 'terra' format (SpatVector)
+    fire_vect <- vect(fires_this_month)
+    
+    # Extract temperature values within each fire polygon and compute the mean
+    extracted_values <- terra::extract(temp_raster, fire_vect, fun = mean, na.rm = TRUE)
+
+    
+    # Assign the extracted temperature values back to the fire dataset
+    # Extracted values come in a dataframe, and the 2nd column is the mean temperature
+    data$avg_temp[data[[month]] == 1] <- extracted_values[, 2]  # Column 2 contains the mean temperature
+  }
+}
+
+# Save the updated fire data with temperature averages
+st_write(data, "fire_temperatures_with_avg_temp.shp")
+
+
+``` 
+
+
+
+```{r}
+# Drop any fires with missing temperature data
+data_viz <- data %>% filter(!is.na(avg_temp))
+
+# Plot California map with fire polygons
+ggplot() +
+  geom_sf(data = CA, fill = "lightgrey", color = "black") +  # California background
+  geom_sf(data = data_viz, aes(fill = avg_temp), color = "black", alpha = 0.7) +  # Fire polygons with temp
+    scale_fill_gradientn(colors = colorRampPalette(c("blue", "cyan", "yellow", "red"))(100),  # Custom color palette
+    name = "Avg Temp (°C)"  # Label for the color scale
+    ) +  # Heat color scale
+  labs(title = "Average Temperature During Wildfires (2020)",
+       subtitle = "Based on Monthly Max Temperature Data") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+```
+
+
+
+
