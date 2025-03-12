@@ -1,20 +1,40 @@
 ---
-title: "Wilfires - Cities and Land cover"
+title: "City Proximity and Land Cover Analysis for California Wildfires (2020)"
 output: html_document
-date: "2025-03-07"
+date: "2025-03-12"
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+# Motivation
 
-## R Markdown
+The 2020 California wildfire season was one of the most destructive on record, with over 4 million acres burned across the state. This part of analysis focuses on two critical determinants of wildfire impact:
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+(1) the proximity of fires to populated areas.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+(2) the types of land cover affected by these fires. These factors are essential for understanding both the human impact and ecological significance of wildfire events.
 
-```{r}
+# City Proximity Analysis
+
+Understanding the spatial relationship between wildfire perimeters and population centers is crucial for several reasons:
+
+-   Emergency Response Planning: By quantifying the distance between fires and communities, emergency management can better prioritize resources and evacuation efforts for the most at-risk populations.
+
+-   Public Health Implications: Even communities not directly threatened by flames can experience significant health impacts from smoke and air quality degradation, which are influenced by proximity to active fires.
+
+-   Urban-Wildland Interface: As California's development continues to expand into previously wild areas, the interface between human settlements and fire-prone landscapes becomes increasingly important to map and understand.
+
+Our analysis uses geospatial techniques to measure distances between city centroids and fire perimeters, identifying communities within critical distance thresholds (particularly those within 50km of fire boundaries).
+
+# Data Sources
+
+-   California Fire Perimeters Dataset. accessed at: <https://data.cnra.ca.gov/dataset/california-fire-perimeters-all?utm_source=chatgpt.com>
+
+-   Administrative level 1 boundaries, which include states, provinces, and regions within countries from Natural Earth (scale 1:110)
+
+-   TIGER/Line Shapefiles, which are provided by the U.S. Census Bureau containing cities and towns in LA. accessed at: <https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2020&layergroup=Places>
+
+-   Annuals NLCD Land Cover Data. Accessed at: <https://www.mrlc.gov/data?f%5B0%5D=category%3ALand%20Cover&f%5B1%5D=project_tax_term_term_parents_tax_term_name%3AAnnual%20NLCD>
+
+```{r, message=FALSE, warning=FALSE}
 #Distance from cities
 ##########
 
@@ -29,7 +49,9 @@ library(raster)
 library(httr)
 library(jsonlite)
 library(FedData)
+```
 
+```{r, message=FALSE}
 # Read Fire Data (2020 only)
 data <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
 data <- data %>% filter(YEAR_ == 2020)
@@ -44,7 +66,9 @@ CA <- US_States_simple %>% filter(postal == "CA")
 places <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/tl_2020_06_place/tl_2020_06_place.shp")
 colnames(places)
 head(places)
+```
 
+```{r, warning=FALSE}
 # Reproject all layers to EPSG:3310 at the start
 data_3310 <- st_transform(data, 3310)
 CA_3310 <- st_transform(CA, 3310)
@@ -53,7 +77,9 @@ places_ca_centroids_3310 <- st_centroid(st_transform(places, 3310))
 # Combine all fire polygons into one and compute centroid
 fire_union_3310 <- st_union(data_3310)
 fire_union_centroid_3310 <- st_centroid(fire_union_3310)
+```
 
+```{r, warning=FALSE}
 # Distance from each city centroid to the fire boundary and union centroid
 places_ca_centroids_3310$dist_to_fire_boundary <- st_distance(places_ca_centroids_3310, fire_union_3310)
 places_ca_centroids_3310$dist_to_fire_union_centroid <- st_distance(places_ca_centroids_3310, fire_union_centroid_3310)
@@ -64,7 +90,9 @@ city_fire_matrix <- st_distance(places_ca_centroids_3310, fire_centroids_3310)
 
 # Extract the nearest fire centroid distance per city
 places_ca_centroids_3310$dist_to_nearest_fire_centroid <- rowMins(city_fire_matrix)
+```
 
+```{r}
 ggplot() +
   # California boundary
   geom_sf(data = CA_3310, fill = "white", color = "black") +
@@ -85,8 +113,9 @@ ggplot() +
     color = "Distance to Fire (m)",
     title = "California Fires 2020: Distance from Cities to Fire Perimeters (EPSG:3310)"
   )
+```
 
-
+```{r}
 max_dist <- max(as.numeric(places_ca_centroids_3310$dist_to_fire_boundary), na.rm = TRUE)
 
 ggplot() +
@@ -120,9 +149,9 @@ ggplot() +
     color = "Distance to Fire (m)",
     title = "CA Fires 2020: Distance from Cities"
   )
+```
 
-
-
+```{r}
 #### Fire Proximity - Filter 50km
 
 # 1. Convert distance units to numeric (removing "units" class):
@@ -160,8 +189,9 @@ ggplot() +
     color = "Distance to Fire (m)",
     title = "CA Fires 2020: Distance from Cities - Less than 50 km"
   )
+```
 
-
+```{r}
 ##################
 # List those cities for reference
 
@@ -178,24 +208,255 @@ cities_50 <- places_ca_centroids_3310 %>%
 cities_list <- dplyr::select(st_drop_geometry(cities_50), NAME, dist_num)
 
 print(cities_list)
+```
+
+# Population-Weighted Risk Analysis for California Wildfires
+
+Population-Weighted Risk Analysis for California Wildfires is essential because it provides a more accurate representation of human impact than raw geographical proximity alone. By accounting for both a community's distance from fires and its population size, this approach highlights areas where large numbers of people are endangered, not just geographical points on a map.
+
+```{r, warning=FALSE, message=FALSE}
+# This part extends our existing analysis to include population weighting
+
+########################################################
+# Extract population data or join with Census data
+########################################################
+
+# Check if the places shapefile has population data
+if("POP10" %in% colnames(places) || "POPULATION" %in% colnames(places)) {
+  # If population field already exists, use it
+  pop_field <- ifelse("POP10" %in% colnames(places), "POP10", "POPULATION")
+  
+  # Join population to your existing centroids dataframe
+  places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+    left_join(st_drop_geometry(places) %>% 
+              dplyr::select(GEOID, NAME, !!sym(pop_field)), 
+              by = c("GEOID"))
+  
+  # Rename the population field to be consistent
+  places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+    rename(Population = !!sym(pop_field))
+} else {
+  # If no population data is available, we need to get it from Census API
+  # or another source. This example uses the tidycensus package.
+  
+  # Install if needed
+  if(!require(tidycensus)) {
+    install.packages("tidycensus")
+    library(tidycensus)
+  }
+  
+  # You'll need a Census API key - get one at https://api.census.gov/data/key_signup.html
+  # census_api_key("YOUR_API_KEY")
+  
+  # Get population data for places in California
+  ca_places_pop <- get_decennial(
+    geography = "place",
+    variables = "P1_001N", # Total population
+    state = "CA",
+    year = 2020,
+    geometry = FALSE
+  )
+  
+  # Clean up the data
+  ca_places_pop <- ca_places_pop %>%
+    rename(Population = value) %>%
+    dplyr::select(GEOID, NAME, Population)
+  
+  # Join to your centroids
+  places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+    left_join(ca_places_pop, by = c("GEOID"))
+}
+```
+
+```{r, warning=FALSE, message=FALSE}
+########################################################
+# Calculate risk categories based on distance and population
+########################################################
+
+# Add risk categories based on distance
+places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+  mutate(
+    # Distance in km for readability
+    distance_km = dist_num / 1000,
+    
+    # Risk category based on distance
+    risk_category = case_when(
+      distance_km <= 10 ~ "Extreme",
+      distance_km <= 20 ~ "High",
+      distance_km <= 35 ~ "Moderate",
+      distance_km <= 50 ~ "Low",
+      TRUE ~ "Minimal"
+    ),
+    
+    # Convert risk category to numeric score for calculations
+    risk_score = case_when(
+      risk_category == "Extreme" ~ 5,
+      risk_category == "High" ~ 4,
+      risk_category == "Moderate" ~ 3,
+      risk_category == "Low" ~ 2,
+      TRUE ~ 1
+    )
+  )
+
+# Calculate population-weighted risk metrics
+places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+  mutate(
+    # Population at risk (simple metric)
+    population_at_risk = ifelse(distance_km <= 50, Population, 0),
+    
+    # Population risk score (weighted by both population size and risk level)
+    population_risk_score = Population * risk_score,
+    
+    # Risk index (normalized score between 0-100)
+    risk_index = population_risk_score / max(population_risk_score, na.rm = TRUE) * 100
+  )
+
+```
+
+```{r}
+########################################################
+# Create a summary table of highest-risk cities
+########################################################
+
+# Check column names first to see what's available
+print("Available columns in places_ca_centroids_3310:")
+print(colnames(places_ca_centroids_3310))
+
+# Check column names first to see what's available
+# Now that we see the available columns, we can select the right ones
+high_risk_cities <- places_ca_centroids_3310 %>%
+  arrange(desc(risk_index)) %>%
+  head(20) %>%
+  st_drop_geometry() %>%
+  dplyr::select(
+    NAME.x,               # The city name is in NAME.x
+    Population,
+    distance_km,
+    risk_category,
+    population_at_risk,
+    risk_index
+  ) %>%
+  # Rename NAME.x to City for clarity
+  rename(City = NAME.x)
+
+# Print the table
+print(high_risk_cities)
+
+# Save the table for later use
+write.csv(high_risk_cities, "high_risk_cities_2020.csv", row.names = FALSE)
 
 
-############
-# LAND USAGE
-############
+```
 
-# nlcd_url <- "https://tiledimageservices2.arcgis.com/Uq9r85Potqm3MfRV/arcgis/rest/services/nlcd_2019_land_cover_ca_wm/ImageServer?f=pjson"
-# 
-# # Fetch metadata
-# nlcd_metadata <- fromJSON(nlcd_url)
-# print(nlcd_metadata)
-# 
-# # Define bounding box (xmin, ymin, xmax, ymax in lat/lon)
-# bbox <- "-125, 32, -114, 42"  # Approximate bounding box for California
-# # 
+```{r}
+########################################################
+# Visualize population-weighted fire risk
+########################################################
 
-####NEW RASTER
-######
+# Create a map showing cities with circle size proportional to population and color by risk
+ggplot() +
+  # California boundary
+  geom_sf(data = CA_3310, fill = "white", color = "black") +
+  
+  # Fire polygons
+  geom_sf(data = data_3310, fill = "red", alpha = 0.6, color = NA) +
+  
+  # City points with size based on population and color based on risk
+  geom_sf(
+    data = places_ca_centroids_3310 %>% filter(!is.na(Population)),
+    aes(
+      color = risk_category,
+      size = Population
+    ),
+    alpha = 0.7
+  ) +
+  
+  # Scale settings
+  scale_color_manual(
+    values = c("Extreme" = "#7F0000", "High" = "#FF0000", 
+               "Moderate" = "#FFA500", "Low" = "#FFFF00", "Minimal" = "#00FF00"),
+    name = "Fire Risk Level"
+  ) +
+  scale_size_continuous(
+    name = "Population",
+    range = c(0.5, 5),
+    labels = scales::comma
+  ) +
+  
+  # Map styling
+  theme_minimal() +
+  labs(
+    title = "Population-Weighted Fire Risk in California (2020)",
+    subtitle = "Circle size indicates population; color indicates risk level based on distance to fires",
+    caption = "Data sources: Cal Fire, U.S. Census Bureau"
+  )
+
+```
+
+```{r}
+########################################################
+# Create a bar chart of population at risk by category
+########################################################
+
+# Summarize population at risk by risk category
+risk_summary <- places_ca_centroids_3310 %>%
+  st_drop_geometry() %>%
+  group_by(risk_category) %>%
+  summarize(
+    total_population = sum(Population, na.rm = TRUE),
+    cities_count = n()
+  ) %>%
+  arrange(factor(risk_category, levels = c("Extreme", "High", "Moderate", "Low", "Minimal")))
+
+# Plot the summary
+ggplot(risk_summary, aes(x = factor(risk_category, 
+                                    levels = c("Extreme", "High", "Moderate", "Low", "Minimal")),
+                         y = total_population)) +
+  geom_bar(stat = "identity", aes(fill = factor(risk_category))) +
+  geom_text(aes(label = paste0(cities_count, " cities")), 
+            position = position_stack(vjust = 0.5), color = "white") +
+  scale_fill_manual(
+    values = c("Extreme" = "#7F0000", "High" = "#FF0000", 
+               "Moderate" = "#FFA500", "Low" = "#FFFF00", "Minimal" = "#00FF00"),
+    name = "Fire Risk Level"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal() +
+  labs(
+    title = "California Population by Wildfire Risk Level (2020)",
+    subtitle = "Number of cities shown in each bar",
+    x = "Risk Category",
+    y = "Total Population",
+    caption = "Risk categories based on distance to 2020 fire perimeters"
+  ) +
+  theme(axis.text.x = element_text(angle = 0))
+```
+
+*Note* that the total of around 1,400 places should not be a cause for concern in our analysis. The higher-than-expected count reflects the Census Bureau's comprehensive definition of "places" in their TIGER/Line shapefiles, which extends well beyond just incorporated cities. The dataset includes:
+
+-   incorporated municipalities (cities, towns),
+-   Census Designated Places (CDPs) which are unincorporated communities with defined boundaries,
+-   various smaller settlements that have distinct geographic identities recognized by the Census Bureau
+
+While California has 482 incorporated cities, it has over 1,000 additional Census Designated Places, bringing the total close to the number we're seeing. This comprehensive inclusion actually strengthens our analysis by providing a more complete picture of population exposure to wildfire risk across all types of human settlements in California, not just major cities.
+
+# Land Cover Type Analysis
+
+The second component examines the relationship between land cover types and fire perimeters, which helps illuminate:
+
+-   Fuel Availability: Different vegetation types (forests, shrublands, grasslands) have varying combustibility and fuel characteristics that influence fire behavior.
+
+-   Development Patterns: By distinguishing between natural and developed areas affected by fires, we can better understand the human-wildfire relationship in California.
+
+-   Ecological Impact Assessment: Identifying which ecosystem types were most affected provides insight into potential ecological consequences and recovery trajectories.
+
+Using the National Land Cover Database (NLCD), our analysis categorizes and quantifies the types of land affected by the 2020 fires, with special attention to the distribution between developed (urban/populated) versus natural/other land covers.
+
+```{r, message=FALSE, warning=FALSE}
+#########################################
+# NLCD and Fire Perimeter Data Processing
+#########################################
+
 # Load NLCD raster
 nlcd_raster <- rast("/Users/macbookpro/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/Annual_NLCD_LndCov_2020_CU_C1V0.tif")
 
@@ -206,9 +467,14 @@ CA <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/ne_110m_ad
 
 # Convert California boundary to terra format and crop raster
 nlcd_ca <- crop(nlcd_raster, vect(CA), mask = TRUE)
+```
 
+```{r}
 # Visualize and save cropped raster
 plot(nlcd_ca, main = "NLCD Land Cover - California (2020)")
+```
+
+```{r, warning=FALSE, message=FALSE}
 writeRaster(nlcd_ca, "NLCD_2020_California.tif", overwrite = TRUE)
 
 # Load California Land Cover Raster
@@ -242,6 +508,12 @@ print(landcover_summary)
 # # Convert raster to dataframe for plotting
 # nlcd_df <- as.data.frame(nlcd_ca, xy = TRUE, cells = TRUE)
 # colnames(nlcd_df) <- c("x", "y", "Land_Cover_Type")
+```
+
+```{r}
+########################################
+# NLCD Raster Processing and Conversion
+########################################
 
 # Reduce raster resolution
 nlcd_ca_resampled <- aggregate(nlcd_ca, fact=10, fun=modal)  # Increase `fact` if necessary
@@ -267,7 +539,9 @@ colnames(nlcd_poly)[colnames(nlcd_poly) == "Annual_NLCD_LndCov_2020_CU_C1V0"] <-
 if (!"Land_Cover_Type" %in% colnames(nlcd_poly)) {
   stop("Land_Cover_Type column is missing in nlcd_poly. Check raster attributes.")
 }
+```
 
+```{r}
 # Plot using vectorized raster
 ggplot() +
   geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Type)), color = NA) +
@@ -275,7 +549,9 @@ ggplot() +
   labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
        fill = "Land Cover Type") +
   theme_minimal()
+```
 
+```{r}
 
 # Define land cover type labels correctly
 land_cover_labels <- data.frame(
@@ -288,8 +564,9 @@ land_cover_labels <- data.frame(
                       "Cultivated Crops", "Woody Wetlands",
                       "Emergent Herbaceous Wetlands")
 )
+```
 
-
+```{r}
 # # Ensure raster values are preserved before converting to polygons
 # nlcd_poly <- as.polygons(nlcd_ca_resampled, dissolve = TRUE) %>%
 #   st_as_sf()
@@ -320,7 +597,9 @@ nlcd_poly <- nlcd_poly %>%
 if (!"Land_Cover_Name" %in% colnames(nlcd_poly)) {
   stop("Land_Cover_Name column is missing after merging labels.")
 }
+```
 
+```{r}
 # Plot using vectorized raster
 ggplot() +
   geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Name)), color = NA) +
@@ -328,7 +607,9 @@ ggplot() +
   labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
        fill = "Land Cover Type") +
   theme_minimal()
+```
 
+```{r}
 
 # Plot with categorized land usage
 ggplot() +
@@ -340,5 +621,18 @@ ggplot() +
        x = "Longitude", y = "Latitude") +
   theme_minimal()
 
-
 ```
+
+# Findings
+
+Based on the code implementation, this analysis provided:
+
+-   A ranked list of California cities most vulnerable to wildfire impacts based on proximity measurements
+
+-   Visual representations of the spatial relationships between population centers and fire perimeters
+
+-   Population weighted fire risk analysis
+
+-   Quantitative breakdown of land cover types within fire-affected areas
+
+-   Insights into whether fires predominantly affected natural landscapes or encroached on developed areas
