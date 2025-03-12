@@ -207,7 +207,7 @@ cities_50 <- places_ca_centroids_3310 %>%
 # Extract a list with city names, distances, and coordinates
 cities_list <- dplyr::select(st_drop_geometry(cities_50), NAME, dist_num)
 
-print(cities_list)
+head(cities_list,20)
 ```
 
 # Population-Weighted Risk Analysis for California Wildfires
