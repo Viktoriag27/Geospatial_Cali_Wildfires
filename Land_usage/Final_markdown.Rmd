@@ -1,7 +1,7 @@
 ---
 title: "City Proximity and Land Cover Analysis for California Wildfires (2020)"
 output: html_document
-date: "2025-03-12"
+date: "2025-03-14"
 ---
 
 # Motivation
@@ -24,15 +24,6 @@ Understanding the spatial relationship between wildfire perimeters and populatio
 
 Our analysis uses geospatial techniques to measure distances between city centroids and fire perimeters, identifying communities within critical distance thresholds (particularly those within 50km of fire boundaries).
 
-# Data Sources
-
--   California Fire Perimeters Dataset. accessed at: <https://data.cnra.ca.gov/dataset/california-fire-perimeters-all?utm_source=chatgpt.com>
-
--   Administrative level 1 boundaries, which include states, provinces, and regions within countries from Natural Earth (scale 1:110)
-
--   TIGER/Line Shapefiles, which are provided by the U.S. Census Bureau containing cities and towns in LA. accessed at: <https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2020&layergroup=Places>
-
--   Annuals NLCD Land Cover Data. Accessed at: <https://www.mrlc.gov/data?f%5B0%5D=category%3ALand%20Cover&f%5B1%5D=project_tax_term_term_parents_tax_term_name%3AAnnual%20NLCD>
 
 ```{r, message=FALSE, warning=FALSE}
 #Distance from cities
@@ -51,7 +42,7 @@ library(jsonlite)
 library(FedData)
 ```
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
 # Read Fire Data (2020 only)
 data <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
 data <- data %>% filter(YEAR_ == 2020)
@@ -79,6 +70,8 @@ fire_union_3310 <- st_union(data_3310)
 fire_union_centroid_3310 <- st_centroid(fire_union_3310)
 ```
 
+### Distance from each city centroid to the fire boundary and union centroid
+
 ```{r, warning=FALSE}
 # Distance from each city centroid to the fire boundary and union centroid
 places_ca_centroids_3310$dist_to_fire_boundary <- st_distance(places_ca_centroids_3310, fire_union_3310)
@@ -98,7 +91,7 @@ ggplot() +
   geom_sf(data = CA_3310, fill = "white", color = "black") +
   
   # Fire polygons
-  geom_sf(data = data_3310, fill = "red", alpha = 0.6, color = NA) +
+  geom_sf(data = data_3310, fill = "yellow", alpha = 0.8, color = "black") +
   
   # City centroids, colored by distance to boundary
   geom_sf(
@@ -115,41 +108,12 @@ ggplot() +
   )
 ```
 
-```{r}
-max_dist <- max(as.numeric(places_ca_centroids_3310$dist_to_fire_boundary), na.rm = TRUE)
+This map illustrates the proximity of California cities to fire perimeters during the 2020 wildfire season. Each dot represents a population center, with colors indicating distance to the nearest fire - dark blue/purple dots show cities very close to fire boundaries (under 25,000 meters), while yellow dots represent locations around 100,000 meters from fires. 
 
-ggplot() +
-  geom_sf(data = CA_3310, fill = "white", color = "black") +
-  geom_sf(data = data_3310, fill = "black", alpha = 0.9, color = NA) +
-  geom_sf(
-    data = places_ca_centroids_3310,
-    aes(color = as.numeric(dist_to_fire_boundary)),
-    size = 1
-  ) +
-  scale_color_gradientn(
-    colors = c("#FF0000", "#FFA500", "#808080", "#008000"),
-    breaks = c(0, 1000, 5000, 10000, 50000, 100000, 150000, max_dist),
-    labels = c("0 km", "1 km", "5 km", "10 km", "50 km", "100 km", "150 km",
-               paste0(round(max_dist/1000), " km"))
-  ) +
-  guides(
-    # Make the colorbar bigger/taller, with some padding
-    color = guide_colorbar(
-      barwidth = 1.5,    # width of the bar in "plot" units
-      barheight = 10,    # height of the bar in "plot" units
-      title.position = "top"  # puts the legend title on top
-    )
-  ) +
-  theme_minimal() +
-  theme(
-    legend.title = element_text(size = 12),
-    legend.text  = element_text(size = 10)
-  ) +
-  labs(
-    color = "Distance to Fire (m)",
-    title = "CA Fires 2020: Distance from Cities"
-  )
-```
+The visualization reveals that northern and central California experienced widespread fire proximity, with many communities in dangerously close range. The clustering of dark blue dots throughout the state highlights how the 2020 fire season created high-risk conditions for numerous populated areas, particularly *along the northern coast and central regions*. Some communities in the eastern inland areas appear to have maintained safer distances from fire perimeters.
+
+
+### Focusing on Close Proximity - 50 Kilometers
 
 ```{r}
 #### Fire Proximity - Filter 50km
@@ -159,7 +123,7 @@ places_ca_centroids_3310$dist_num <- as.numeric(places_ca_centroids_3310$dist_to
 
 # 2. Filter for distances less than 50 km (50,000 meters):
 cities_close <- places_ca_centroids_3310 %>%
-  filter(dist_num < 50000)
+  filter(dist_num <= 50000)
 
 ggplot() +
   geom_sf(data = CA_3310, fill = "white", color = "black") +
@@ -170,7 +134,10 @@ ggplot() +
     size = 1
   ) +
   scale_color_gradientn(
-    colors = c("#FF0000", "#FFA500", "#808080", "#008000")
+  colors = c("#FF0000", "#FFA500", "#808080", "#008000"),
+  limits = c(0, 50000),  # Explicitly set the range
+  breaks = c(0, 10000, 20000, 30000, 40000, 50000),
+  labels = c("0", "10,000", "20,000", "30,000", "40,000", "50,000")
   ) +
   guides(
     # Make the colorbar bigger/taller, with some padding
@@ -191,9 +158,19 @@ ggplot() +
   )
 ```
 
+This map focuses specifically on California cities within 50 kilometers of fire perimeters. The color gradient ranges from bright red (0 km, directly at the fire boundary) through orange (around 10-20 km) to grayish-green (40-50 km).
+The 50 km threshold is particularly interesting because it represents a *critical emergency management boundary*. At this distance:
+
+- Communities have minimal *evacuation time* if fire behavior changes rapidly
+- *Air quality* impacts become significant for sensitive populations
+- *Local resources and infrastructure* may be strained by nearby fire response
+- It represents approximately a 30-45 minute drive time, a realistic evacuation zone
+
+What's striking in this visualization is how many populated areas fall within this high-risk zone. The map reveals dense clusters of red and orange dots (cities within 0-20 km of fires) throughout Central California coastal area such as San Francisco Bay Area and along the Gold Country, while the southern coastal regions also show significant vulnerability. By eliminating cities beyond the 50 km threshold, this map effectively highlights the *communities most directly threatened* by California's devastating 2020 fire season, showing the widespread nature of immediate fire risk across the state.
+
+### Ranking of the cities at highest risk in 2020
+Top 20 closest cities to fire boundaries
 ```{r}
-##################
-# List those cities for reference
 
 # Ensure the distance column is numeric 
 places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
@@ -209,17 +186,14 @@ cities_list <- dplyr::select(st_drop_geometry(cities_50), NAME, dist_num)
 
 head(cities_list,20)
 ```
+First 14 cities actually were at the epicenter of the wildfires;
 
 # Population-Weighted Risk Analysis for California Wildfires
 
-Population-Weighted Risk Analysis for California Wildfires is essential because it provides a more accurate representation of human impact than raw geographical proximity alone. By accounting for both a community's distance from fires and its population size, this approach highlights areas where large numbers of people are endangered, not just geographical points on a map.
+Population-Weighted Risk Analysis for California Wildfires is essential because it provides a *more accurate representation of human impact than raw geographical proximity* alone. By accounting for both a community's distance from fires and its population size, this approach highlights areas where large numbers of people are endangered, not just geographical points on a map.
 
 ```{r, warning=FALSE, message=FALSE}
 # This part extends our existing analysis to include population weighting
-
-########################################################
-# Extract population data or join with Census data
-########################################################
 
 # Check if the places shapefile has population data
 if("POP10" %in% colnames(places) || "POPULATION" %in% colnames(places)) {
@@ -317,13 +291,6 @@ places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
 ########################################################
 # Create a summary table of highest-risk cities
 ########################################################
-
-# Check column names first to see what's available
-print("Available columns in places_ca_centroids_3310:")
-print(colnames(places_ca_centroids_3310))
-
-# Check column names first to see what's available
-# Now that we see the available columns, we can select the right ones
 high_risk_cities <- places_ca_centroids_3310 %>%
   arrange(desc(risk_index)) %>%
   head(20) %>%
@@ -340,19 +307,37 @@ high_risk_cities <- places_ca_centroids_3310 %>%
   rename(City = NAME.x)
 
 # Print the table
-print(high_risk_cities)
+print(high_risk_cities[, c("City", "Population", "distance_km", "risk_category")])
 
 # Save the table for later use
-write.csv(high_risk_cities, "high_risk_cities_2020.csv", row.names = FALSE)
-
+# write.csv(high_risk_cities, "high_risk_cities_2020.csv", row.names = FALSE)
 
 ```
+We create a multi-faceted fire risk assessment by incorporating both proximity and population into our metrics. Mathematically, we first convert categorical risk levels into numerical scores (Extreme=5, High=4, Moderate=3, Low=2, Minimal=1) based on distance thresholds. We then calculate a population risk score using the formula:
+
+*Population Risk Score = Population × Risk Score*
+
+This multiplication is mathematically significant because it creates a composite metric where both factors must be substantial to yield a high result. A small town very close to fires or a large city moderately far from fires might have similar scores, reflecting their *comparable overall risk profiles despite different characteristics*.
+
+We further normalize this into a 0-100 risk index using:
+
+Risk Index = (Population Risk Score ÷ Maximum Population Risk Score) × 100
+
+This mathematical transformation maintains the relative relationships between cities while creating an intuitive scale. We believe this weighting approach is important because it avoids the mathematical pitfalls of treating all locations within the buffer zone equally, instead creating a gradient that accurately represents the combined threat of fire proximity and potential human impact.
 
 ```{r}
 ########################################################
 # Visualize population-weighted fire risk
 ########################################################
-
+# Before creating the plot, convert risk_category to an ordered factor
+places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
+  mutate(
+    risk_category = factor(
+      risk_category,
+      levels = c("Extreme", "High", "Moderate", "Low", "Minimal"),
+      ordered = TRUE
+    )
+  )
 # Create a map showing cities with circle size proportional to population and color by risk
 ggplot() +
   # California boundary
@@ -378,9 +363,10 @@ ggplot() +
     name = "Fire Risk Level"
   ) +
   scale_size_continuous(
-    name = "Population",
-    range = c(0.5, 5),
-    labels = scales::comma
+  name = "Population",
+  range = c(1, 10),  # Doubled the size range from (0.5, 5) to (1, 10)
+  labels = scales::comma,
+  trans = "sqrt"     # Using a square root transformation to help with readability
   ) +
   
   # Map styling
@@ -392,6 +378,13 @@ ggplot() +
   )
 
 ```
+
+The map reveals a concerning pattern where many heavily populated areas (represented by larger circles) fall within extreme or high-risk zones (dark red and red colors).
+
+Northern California appears particularly vulnerable, with dense clusters of extreme-risk communities throughout the region. The Central Valley shows a mix of risk levels, with many moderate to high-risk areas containing significant populations. Southern California displays a more varied pattern with some large population centers in minimal risk zones (green), though several coastal communities still face considerable fire danger.
+
+What makes this visualization particularly valuable is how *it combines two critical factors - population size and proximity to fires* - to identify communities where the most people faced the highest danger. This approach highlights areas where emergency resources might have been most needed, rather than treating all locations within buffer zones equally. The prevalence of large circles in red and dark red zones suggests that a substantial portion of California's population lived under significant wildfire threat during this period.
+
 
 ```{r}
 ########################################################
@@ -413,7 +406,7 @@ ggplot(risk_summary, aes(x = factor(risk_category,
                                     levels = c("Extreme", "High", "Moderate", "Low", "Minimal")),
                          y = total_population)) +
   geom_bar(stat = "identity", aes(fill = factor(risk_category))) +
-  geom_text(aes(label = paste0(cities_count, " cities")), 
+  geom_text(aes(label = paste0(cities_count)), 
             position = position_stack(vjust = 0.5), color = "white") +
   scale_fill_manual(
     values = c("Extreme" = "#7F0000", "High" = "#FF0000", 
@@ -424,7 +417,7 @@ ggplot(risk_summary, aes(x = factor(risk_category,
   theme_minimal() +
   labs(
     title = "California Population by Wildfire Risk Level (2020)",
-    subtitle = "Number of cities shown in each bar",
+    subtitle = "Number of communities shown in each bar",
     x = "Risk Category",
     y = "Total Population",
     caption = "Risk categories based on distance to 2020 fire perimeters"
@@ -432,7 +425,9 @@ ggplot(risk_summary, aes(x = factor(risk_category,
   theme(axis.text.x = element_text(angle = 0))
 ```
 
-*Note* that the total of around 1,400 places should not be a cause for concern in our analysis. The higher-than-expected count reflects the Census Bureau's comprehensive definition of "places" in their TIGER/Line shapefiles, which extends well beyond just incorporated cities. The dataset includes:
+This bar chart illustrates the alarming distribution of California's population across wildfire risk categories in 2020. Strikingly, *the highest number of people (over 16 million) lived in "High" risk areas*, spread across 502 communities. The "Extreme" risk category contained the most communities (628) with approximately 11 million residents. Together, these two highest risk categories encompassed over 27 million Californians. Moderate risk areas included 340 communities with about 8 million people, while relatively few residents lived in Low or Minimal risk zones (only 108 and 57 communities respectively). This visualization clearly demonstrates that the vast majority of California's population faced significant wildfire threats in 2020, with *over three-quarters of the state's communities falling into the Extreme or High risk* categories.
+
+*Note that* "places" in TIGER/Line shapefiles extends well beyond just incorporated cities. The dataset includes:
 
 -   incorporated municipalities (cities, towns),
 -   Census Designated Places (CDPs) which are unincorporated communities with defined boundaries,
@@ -470,11 +465,12 @@ nlcd_ca <- crop(nlcd_raster, vect(CA), mask = TRUE)
 ```
 
 ```{r}
-# Visualize and save cropped raster
+# Visualize cropped raster
 plot(nlcd_ca, main = "NLCD Land Cover - California (2020)")
 ```
 
 ```{r, warning=FALSE, message=FALSE}
+#Save cropped raster
 writeRaster(nlcd_ca, "NLCD_2020_California.tif", overwrite = TRUE)
 
 # Load California Land Cover Raster
@@ -510,7 +506,7 @@ print(landcover_summary)
 # colnames(nlcd_df) <- c("x", "y", "Land_Cover_Type")
 ```
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 ########################################
 # NLCD Raster Processing and Conversion
 ########################################
@@ -529,9 +525,6 @@ print(unique(values(nlcd_ca_resampled)))
 nlcd_poly <- as.polygons(nlcd_ca_resampled, dissolve = TRUE) %>%
   st_as_sf()
 
-# Check column names
-print(colnames(nlcd_poly))
-
 # Rename the raster value column (which currently has the raster filename)
 colnames(nlcd_poly)[colnames(nlcd_poly) == "Annual_NLCD_LndCov_2020_CU_C1V0"] <- "Land_Cover_Type"
 
@@ -541,15 +534,6 @@ if (!"Land_Cover_Type" %in% colnames(nlcd_poly)) {
 }
 ```
 
-```{r}
-# Plot using vectorized raster
-ggplot() +
-  geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Type)), color = NA) +
-  geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
-  labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
-       fill = "Land Cover Type") +
-  theme_minimal()
-```
 
 ```{r}
 
@@ -567,12 +551,6 @@ land_cover_labels <- data.frame(
 ```
 
 ```{r}
-# # Ensure raster values are preserved before converting to polygons
-# nlcd_poly <- as.polygons(nlcd_ca_resampled, dissolve = TRUE) %>%
-#   st_as_sf()
-# 
-# # Rename raster column to match previous use
-# colnames(nlcd_poly)[colnames(nlcd_poly) == "Annual_NLCD_LndCov_2020_CU_C1V0"] <- "Land_Cover_Type"
 
 # Convert Land_Cover_Type to numeric for proper merging
 nlcd_poly$Land_Cover_Type <- as.numeric(nlcd_poly$Land_Cover_Type)
@@ -600,22 +578,51 @@ if (!"Land_Cover_Name" %in% colnames(nlcd_poly)) {
 ```
 
 ```{r}
-# Plot using vectorized raster
+# # Plot using vectorized raster
+# ggplot() +
+#   geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Name)), color = NA) +
+#   geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
+#   labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
+#        fill = "Land Cover Type") +
+#   theme_minimal()
+# Plot with improved color distinction
 ggplot() +
   geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Name)), color = NA) +
   geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
+  scale_fill_manual(values = c(
+    "Barren Land" = "#b3afa4",               # Gray-tan for Barren Land
+    "Cultivated Crops" = "#e49635",          # Orange
+    "Deciduous Forest" = "#b8af4f",          # Olive-gold
+    "Developed, High Intensity" = "#990000",  # Dark red
+    "Developed, Low Intensity" = "#f2a582",   # Light orange-pink
+    "Developed, Medium Intensity" = "#d73027", # Medium red
+    "Developed, Open Space" = "#fddbc7",      # Very light pink
+    "Emergent Herbaceous Wetlands" = "#2c7fb8", # Blue
+    "Evergreen Forest" = "#1a9850",           # Deep green
+    "Grassland/Herbaceous" = "#ffffbf",       # Light yellow
+    "Mixed Forest" = "#7fbc41",               # Light green
+    "Open Water" = "#0571b0",                 # Deep blue
+    "Pasture/Hay" = "#dfc27d",                # Tan
+    "Perennial Ice/Snow" = "#c7eae5",         # Very light blue
+    "Shrub/Scrub" = "#f6e8c3",                # Light tan
+    "Woody Wetlands" = "#542788"              # Purple for Woody Wetlands
+  )) +
   labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
        fill = "Land Cover Type") +
   theme_minimal()
 ```
+
+This map clearly shows the relationship between California's land cover types and 2020 fire perimeters. The black outlines mark fire boundaries, which appear *concentrated in evergreen forest* (dark green) and *grassland/herbaceous* areas (pale yellow). 
+
+Eastern California is dominated by shrub/scrub landscapes (cream color), while the Central Valley features a distinct band of cultivated cropland (orange). Urban development (red shades) is primarily concentrated along the southern coast, notably in the Los Angeles and San Diego regions. This visualization demonstrates how fires disproportionately affected forested regions in northern California and the Sierra Nevada range, while the central agricultural valley and eastern deserts experienced fewer fire events.
 
 ```{r}
 
 # Plot with categorized land usage
 ggplot() +
   geom_sf(data = nlcd_poly, aes(fill = Land_Use_Category), color = NA) +
-  geom_sf(data = fire_perimeters, fill = NA, color = "red", linewidth = 0.4) +
-  scale_fill_manual(values=c("gray", "forestgreen"), name="Land Usage Type") +
+  geom_sf(data = fire_perimeters, fill = "#FF474C", color = "black", linewidth = 0.4) +
+  scale_fill_manual(values=c("yellow", "forestgreen"), name="Land Usage Type") +
   labs(title = "California Land Cover (2020) and Fire Perimeters",
        subtitle = "Developed vs Natural areas affected by 2020 fires",
        x = "Longitude", y = "Latitude") +
@@ -625,14 +632,26 @@ ggplot() +
 
 # Findings
 
-Based on the code implementation, this analysis provided:
+This part analyzed the relationship between California's 2020 wildfire perimeters and populated areas, creating a comprehensive *assessment of community risk exposure*. Through multiple visualizations, we explored how proximity to fires affected different communities and examined the geographical patterns of wildfire risk across diverse landscapes.
 
--   A ranked list of California cities most vulnerable to wildfire impacts based on proximity measurements
+## Key components included:
 
--   Visual representations of the spatial relationships between population centers and fire perimeters
+- Mapping fire proximity zones with distance thresholds (0-50km)
+- Developing population-weighted risk metrics
+- Categorizing communities into five risk levels (Extreme to Minimal)
+- Analyzing land cover types in relation to fire perimeters
+- Visualizing the distribution of developed vs. natural areas affected by fires
 
--   Population weighted fire risk analysis
+## Most Compelling Finding
 
--   Quantitative breakdown of land cover types within fire-affected areas
+The most striking discovery was the *disproportionate population exposure to high wildfire risk*. While California's complex landscape showed fires predominantly affecting forested regions, our population-weighted analysis revealed that over 27 million Californians lived in communities categorized as either "Extreme" or "High" risk. This included more than 1,100 distinct settlements, representing an alarming majority of the state's population centers. The Central Valley's agricultural corridor appeared to create a partial buffer zone, but many large population centers still fell within critical proximity to fire boundaries, highlighting the vast scale of vulnerability and challenging traditional assumptions about which communities face the greatest wildfire threats.
 
--   Insights into whether fires predominantly affected natural landscapes or encroached on developed areas
+# Data Sources
+
+-   California Fire Perimeters Dataset. accessed at: <https://data.cnra.ca.gov/dataset/california-fire-perimeters-all?utm_source=chatgpt.com>
+
+-   Administrative level 1 boundaries, which include states, provinces, and regions within countries from Natural Earth (scale 1:110)
+
+-   TIGER/Line Shapefiles, which are provided by the U.S. Census Bureau containing cities and towns in LA. accessed at: <https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2020&layergroup=Places>
+
+-   Annuals NLCD Land Cover Data. Accessed at: <https://www.mrlc.gov/data?f%5B0%5D=category%3ALand%20Cover&f%5B1%5D=project_tax_term_term_parents_tax_term_name%3AAnnual%20NLCD>
