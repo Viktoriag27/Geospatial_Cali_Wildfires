@@ -1,0 +1,373 @@
+---
+title: "SPEI Index"
+author: "Irache Vergara"
+date: "2025-03-09"
+output: html_document
+---
+
+# Introduction
+Wildfires have long been a part of California’s landscape, but 2020 marked a record-breaking year, with fires burning millions of acres and causing severe damage to communities, ecosystems, and infrastructure. The increasing frequency and severity of wildfires raise important questions about the factors driving these events. Understanding the key factors that contribute to wildfires is essential not only for improving prevention and mitigation strategies but also for assessing their broader economic, environmental, and political implications.
+
+This project focuses on the spatial determinants of wildfires in California during 2020, using geospatial analysis to explore how drought severity, vegetation, topography, and proximity to human activity influence fire behavior. Specifically, we investigate:
+
+- Proximity to populated areas: The role of roads and urban development in fire ignition and spread.
+- Elevation: How altitude influences fire behavior and distribution.
+- Water availability and drought conditions (SPEI): The impact of humidity and water availability on fire patterns
+- Temperature and wind: How weather conditions contribute to fire intensity and spread.
+
+Beyond physical drivers, wildfires have far-reaching economic, environmental, and policy implications, including air quality degradation, public health risks, and land management debates. By identifying spatial patterns and correlations, this study seeks to improve understanding of wildfire risks and support more effective mitigation strategies.
+
+Our analysis relies on a combination of satellite imagery, environmental monitoring data, and official records to map fire patterns and assess correlations between different factors. Through this research, we aim to highlight key insights that can help policymakers, researchers, and communities better understand and manage wildfire risks.
+
+# Data
+- Duration (days): Measures how long a wildfire burns.
+- Brightness (Kelvin): Captured from satellite Channel 21/22, indicating fire intensity.
+- Acreage (acres): Represents the total land area burned.
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(lubridate)
+library(sf)
+library(tigris)
+library(terra)
+library(ncdf4)
+library(ggnewscale)
+library(tidyr)
+```
+
+# Drough Conditions
+Water availability and drought conditions are part of the main determinants of wildfire behavior, influencing both the likelihood of ignition and fire spread intensity. In this section, we assess the impact of drought on wildfires using the Standardized Precipitation-Evapotranspiration Index (SPEI). This index measures drought severity by accounting for both precipitation and temperature-driven evapotranspiration. 
+
+By incorporating this index into our analysis, we examine how different levels of drought conditions influenced key wildfire characteristics, including fire duration, fire intensity (brightness), and total acreage burned. Understanding this relationship is essential for assessing the role of water scarcity in wildfire events.
+
+### Load data
+## THIS WILL BE DONE AT THE BEGINING (TO BE DELETED)
+We load and process wildfire data for California in 2020, selecting the variables of interest for our analysis. For further analyzing the impact of drought conditions accross seasons, we extract the seasons, and retrieve California’s boundary for spatial analysis.
+```{r setup1}
+fire_data <- st_read("https://raw.githubusercontent.com/Viktoriag27/Geospatial_Cali_Wildfires/main/merged_fires_cleaned.gpkg")
+
+# Select relevant columns
+fire_data<- fire_data %>%
+  dplyr::select(geom, avg_brightness, ALARM_DATE, duration, GIS_ACRES)
+
+# Convert date and extract year/month/season
+fire_data <- fire_data %>%
+  mutate(
+    acq_date = as.Date(ALARM_DATE),
+    year = year(ALARM_DATE),
+    month = month(ALARM_DATE),
+    season = case_when(
+      month %in% c(12, 1, 2) ~ "Winter",
+      month %in% c(3, 4, 5) ~ "Spring",
+      month %in% c(6, 7, 8) ~ "Summer",
+      month %in% c(9, 10, 11) ~ "Fall"
+    )
+  )
+
+# Filter fires for 2020
+fire_2020 <- fire_data %>% filter(year == 2020)
+```
+
+## Spatial processing
+```{r setup2, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+fire_2020 <- st_transform(fire_2020, 4326)
+
+# Get California boundary
+california_boundary <- states(cb = TRUE, year=2020) %>%
+  filter(NAME == "California") %>%
+  st_transform(4326)  # Ensure same CRS
+
+# Ensure geometry is valid
+california_boundary <- st_make_valid(california_boundary)
+```
+
+
+### Load and process SPEI Index data
+We load the SPEI Index data, extract time values, and assign each observation to a season and year. Next, we aggregate the 2020 SPEI values by season, crop the data to California’s boundary, and convert it into a dataframe. Finally, we rename the columns and compute the annual average SPEI for 2020 to prepare the data for analysis.
+
+```{r setup3, message=FALSE, warning=FALSE, results="hide"}
+# Load NetCDF file
+nc_file <- "~/Desktop/spei01.nc"
+spei_data <- rast(nc_file)
+
+# Extract time values
+time_values <- time(spei_data)
+years <- year(time_values)
+months <- month(time_values)
+
+# Define seasons: Winter, Spring, Summer, Fall
+season_index <- ifelse(months %in% c(12, 1, 2), "Winter",
+                       ifelse(months %in% c(3, 4, 5), "Spring",
+                              ifelse(months %in% c(6, 7, 8), "Summer", "Fall")))
+
+# Combine season and year to avoid mixing different years
+season_year_index <- paste(years, season_index, sep = "_")
+
+# Aggregate SPEI by season using mean
+spei_seasonal_2020 <- tapp(spei_data, index = season_year_index, fun = mean, na.rm = TRUE)
+
+# Crop to California boundary
+spei_california <- mask(crop(spei_seasonal_2020, vect(california_boundary)), vect(california_boundary))
+
+# Convert raster to dataframe
+df_spei <- as.data.frame(spei_california, xy = TRUE)
+
+# Select relevant columns (x, y, and all X2020_* columns)
+df_spei_selected <- df_spei %>%
+  dplyr::select(x, y, starts_with("X2020_"))
+
+# Rename columns using dplyr
+df_spei <- df_spei_selected %>%
+  rename(
+    SPEI_2020_Winter = X2020_Winter,
+    SPEI_2020_Spring = X2020_Spring,
+    SPEI_2020_Summer = X2020_Summer,
+    SPEI_2020_Fall = X2020_Fall
+  )
+
+df_spei$SPEI_2020 <- rowMeans(df_spei[, c("SPEI_2020_Winter", "SPEI_2020_Spring", "SPEI_2020_Summer", "SPEI_2020_Fall")], na.rm = TRUE)
+```
+We create a bounding box to define the plotting area and generate an inverted polygon to mask out regions outside California, ensuring that SPEI index pixels are only displayed within the California's boundaries. In addition, we then convert the SPEI data into a spatial object, clip it to California’s boundary, and transform it into a dataframe for visualization.
+```{r setup4, message=FALSE, warning=FALSE, results="hide"}
+# Create a bounding box for the plot (covering the whole area)
+plot_bbox <- st_bbox(c(xmin = -125, xmax = -114, ymin = 32, ymax = 42), crs = st_crs(4326))
+plot_polygon <- st_as_sfc(plot_bbox)
+
+# Create the inverted polygon (area outside California)
+inverted_california <- st_difference(plot_polygon, st_union(california_boundary))
+inverted_california <- st_make_valid(inverted_california)
+
+# Prepare SPEI data
+if (!exists("df_spei") || is.null(df_spei)) {
+  stop("df_spei is not loaded. Please load your SPEI data.")
+}
+if (!all(c("x", "y", "SPEI_2020") %in% colnames(df_spei))) {
+  stop("df_spei must contain columns 'x', 'y', and 'SPEI_2020'.")
+}
+
+# Convert SPEI data to sf object
+spei_sf <- st_as_sf(df_spei, coords = c("x", "y"), crs = 4326)
+
+# Clip SPEI data to **California only**
+spei_sf_clipped <- st_intersection(spei_sf, california_boundary)
+
+# Convert back to a dataframe for ggplot
+df_spei_clipped_final <- data.frame(
+  x = st_coordinates(spei_sf_clipped)[, 1],
+  y = st_coordinates(spei_sf_clipped)[, 2],
+  SPEI_2020 = spei_sf_clipped$SPEI_2020
+)
+```
+
+
+## Distribution of Wildfires Across Seasons
+We create a bar plot to visualize the distribution of wildfire frequency and total acreage burned across seasons, allowing us to analyze seasonal variations in fire activity. 
+```{r setup5}
+# Create Bar Plot for Seasonal Fire Count and Acreage
+fire_seasonal <- fire_2020 %>%
+  group_by(season) %>%
+  summarise(fire_count = n(),
+            total_acreage = sum(GIS_ACRES, na.rm = TRUE))
+
+# Define a scale factor to align fire count on a secondary y-axis
+scale_factor <- max(fire_seasonal$total_acreage, na.rm = TRUE) / max(fire_seasonal$fire_count, na.rm = TRUE)
+
+# Convert data to long format for proper bar grouping
+fire_seasonal_long <- fire_seasonal %>%
+  mutate(fire_count_scaled = fire_count * scale_factor) %>%
+  pivot_longer(cols = c(total_acreage, fire_count_scaled), 
+               names_to = "Metric", 
+               values_to = "Value") %>%
+  mutate(Metric = recode(Metric, 
+                         "total_acreage" = "Total Acreage", 
+                         "fire_count_scaled" = "Number of Fires"),
+         season = factor(season, levels = c("Winter", "Spring", "Summer", "Fall")))  # Sort seasons
+
+# Create the dual-axis bar plot with separated bars
+ggplot(fire_seasonal_long, aes(x = season, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.7) +
+  
+  # Define the primary y-axis for Total Acreage and secondary y-axis for Number of Fires
+  scale_y_continuous(name = "Total Acreage", 
+                     sec.axis = sec_axis(~ . / scale_factor, name = "Number of Fires", breaks = seq(0, 350, 50))) +
+  
+  # Customize Colors
+  scale_fill_manual(values = c("Total Acreage" = "darkorange", "Number of Fires" = "darkgreen")) +
+  
+  theme_minimal() +
+  labs(title = "",
+       x = "Season", fill = "Metric") +
+  theme(axis.text = element_text(size = 12),
+        axis.title.y.left = element_text(size = 14, face = "bold", color = "darkorange"),
+        axis.title.y.right = element_text(size = 14, face = "bold", color = "darkgreen"),
+        axis.title.x = element_text(size = 14, face = "bold"),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10))
+```
+
+The graph shows that wildfires are concentrated in summer and fall, with the highest number of fires and acreage burned occurring in these seasons. In contrast, winter and spring show minimal fire activity, making them less relevant for the analysis. Since the SPEI Index varies significantly across seasons, averaging it over the entire year won't be representative for the purpose of our analysis. To capture the true impact of drought on wildfires, we will focus only on the average of summer and fall, where fire activity is most intense and drought conditions are most relevant.
+
+# Drought Analysis
+We create maps to analyze how wildfire duration, brightness (intensity), and acreage burned vary across California in relation to drought conditions to assess whether fires in drier regions tend to burn longer, more intensely, and over larger areas. The SPEI Index serves as the background layer, highlighting variations in water availability, while wildfire are mapped using distinct color gradients. The more negative the Index, the drier than normal conditions. This visualization helps spot patterns in wildfire behavior and gives insight into how drought influences fire spread and intensity.
+
+### Duration
+```{r setup6}
+# Plot duration
+ggplot() +
+  # SPEI Index 
+  geom_tile(data = df_spei, aes(x = x, y = y, fill = SPEI_2020), alpha = 0.7, color = NA) +
+  scale_fill_gradient2(low = "darkgreen", mid = "white", high = "blue", midpoint = 0, name = "SPEI Index") +
+  
+  # Overlay New Fill Scale
+  ggnewscale::new_scale_fill() +
+  
+  # California Boundary Outline 
+  geom_sf(data = california_boundary, fill = NA, color = "black", linewidth = 0.8) +
+  
+  # Inverted Mask 
+  geom_sf(data = inverted_california, fill = "white", color = NA, alpha = 1) +
+  
+  geom_sf(data = fire_2020 %>% filter(season %in% c("Summer", "Fall")), 
+          aes(fill = duration), alpha = 0.6, color = NA) +
+  scale_fill_viridis_c(option = "inferno", name = "Duration (days)") +
+  
+  # Labels and Theme
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  ) +
+  labs(x = "Longitude", y = "Latitude", 
+       title = "Impact of Drought on Wilfire Duration") +
+  coord_sf(xlim = c(-124, -114), ylim = c(32, 42))  # Adjust plot limits
+```
+```{r setup7, warning=FALSE}
+# Convert df_spei to sf points
+spei_points <- st_as_sf(df_spei, coords = c("x", "y"), crs = 4326)
+
+# Spatial join
+fire_2020_centroids <- st_centroid(fire_2020)
+
+# Join fires to SPEI cells
+fire_with_spei <- st_join(fire_2020_centroids, spei_points, join = st_nearest_feature)
+
+# Plot
+ggplot(data = fire_with_spei, aes(x = SPEI_2020, y = duration)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "SPEI Index vs Fire Duration",
+       x = "SPEI Index (Drought)",
+       y = "Fire Duration (Days)") +
+  theme_minimal()
+```
+
+The map suggests that longer-duration wildfires tend to occur in northern California, where drought conditions (low SPEI values) are more pronounced. However, there isn’t a clear, direct pattern between drought severity and fire duration. While some long-lasting fires appear in drought-affected areas, smaller fires in these regions tend to burn for shorter periods, suggesting that fire duration may be more influenced by the total acreage burned rather than directly by drought conditions. A possible explanation is that larger fires are harder to control, leading to longer burn times. Drought may still play a role by making vegetation more flammable, but the size of the fire could be the more dominant factor influencing duration.
+
+The scatterplot reveals that longer-duration fires tend to occur under wetter conditions (higher SPEI values), contrary to the expectation that severe drought drives longer fires. This may be because wetter periods promote vegetation growth, increasing fuel availability. When these areas eventually ignite, the abundance of fuel can sustain fires for longer durations, suggesting that fuel accumulation, rather than drought severity alone, plays a key role in fire persistence.
+
+### Acreage
+```{r setup8}
+# Plot acreage
+ggplot() +
+  # SPEI Index  
+  geom_tile(data = df_spei, aes(x = x, y = y, fill = SPEI_2020), alpha = 0.7, color = NA) +
+  scale_fill_gradient2(low = "darkgreen", mid = "white", high = "blue", midpoint = 0, name = "SPEI Index") +
+  
+  # Overlay New Fill Scale
+  ggnewscale::new_scale_fill() +
+  
+  # California Boundary Outline
+  geom_sf(data = california_boundary, fill = NA, color = "black", linewidth = 0.8) +
+  
+  # Inverted Mask
+  geom_sf(data = inverted_california, fill = "white", color = NA, alpha = 1) +
+  
+  geom_sf(data = fire_2020 %>% filter(season %in% c("Summer", "Fall")), 
+          aes(fill = GIS_ACRES), alpha = 0.6, color = NA) +
+  scale_fill_viridis_c(option = "inferno", name = "Acreage") +
+  
+  # Labels and Theme
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  ) +
+  labs(x = "Longitude", y = "Latitude", 
+       title = "Impact of Drought on Burnt Acreage") +
+  coord_sf(xlim = c(-124, -114), ylim = c(32, 42))  # Adjust plot limits
+```
+```{r setup9, warning=FALSE}
+# Filter out extreme outliers 
+fire_filtered <- fire_with_spei %>%
+  filter(GIS_ACRES < 200000)
+
+# Plot
+ggplot(data = fire_filtered, aes(x = SPEI_2020, y = GIS_ACRES)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "SPEI Index vs Fire Duration",
+       x = "SPEI Index (Drought)",
+       y = "Burnt Acreage") +
+  theme_minimal()
+```
+
+The map illustrates how burnt acreage relates to drought conditions While large wildfires (highlighted in yellow) occur under both moderate and severe drought, we don't see a consistent pattern linking drought to fire size. This suggests that factors beyond drought, such as fuel accumulation or fire management challenges, may have a stronger influence on wildfire extent. The scatter plot reinforces this, showing a weak positive relationship between SPEI and burnt acreage, where larger fires tend to occur under milder drought or wetter conditions. This pattern may reflect the role of vegetation growth in wetter years, increasing available fuel and supporting larger fires when ignition occurs.
+
+### Brightness
+```{r setup10}
+# Plot brightness
+ggplot() +
+  # SPEI Index 
+  geom_tile(data = df_spei, aes(x = x, y = y, fill = SPEI_2020), alpha = 0.7, color = NA) +
+  scale_fill_gradient2(low = "darkgreen", mid = "white", high = "blue", midpoint = 0, name = "SPEI Index") +
+  
+  # Overlay New Fill Scale
+  ggnewscale::new_scale_fill() +
+  
+  # California Boundary Outline 
+  geom_sf(data = california_boundary, fill = NA, color = "black", linewidth = 0.8) +
+  
+  # Inverted Mask
+  geom_sf(data = inverted_california, fill = "white", color = NA, alpha = 1) +
+  
+  geom_sf(data = fire_2020 %>% filter(season %in% c("Summer", "Fall")), 
+          aes(fill = avg_brightness), alpha = 0.6, color = NA) +
+  scale_fill_viridis_c(option = "inferno", name = "Brightness") +
+  
+  # Labels and Theme
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  ) +
+  labs(x = "Longitude", y = "Latitude", 
+       title = "Impact of Drought on Wilfire Brightness") +
+  coord_sf(xlim = c(-124, -114), ylim = c(32, 42))  # Adjust plot limits
+```
+
+```{r setup11, warning=FALSE}
+# Plot
+ggplot(data = fire_with_spei, aes(x = SPEI_2020, y = avg_brightness)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "SPEI Index vs Fire Duration",
+       x = "SPEI Index (Drought)",
+       y = "Brightness") +
+  theme_minimal()
+```
+
+The graph shows that wildfire brightness (intensity) is relatively consistent across different drought conditions and fire sizes, suggesting that brightness is more influenced by fuel type and combustion dynamics rather than total acreage burned. Even small fires can burn at high intensity if the fuel is dry and dense, while larger fires may not always exhibit the highest brightness. Factors like wind, oxygen supply, and vegetation type likely play a bigger role in determining fire intensity than drought severity alone. The scatterplot supports this, showing little to no correlation between SPEI and brightness. This suggests that fire intensity is likely driven by other factors rather than the level of drought stress.
+
+## Main findings
+In summary, while drought conditions (low SPEI values) are generally more severe in southern California, northern California also experiences localized drought pockets. However, larger and longer-lasting wildfires are more common in the north, suggesting that drought alone does not fully explain fire behavior. The weak relationship between drought severity and fire duration, burnt acreage, or brightness indicates that factors like fuel accumulation, vegetation density, and local terrain may play a more significant role. In fact, wetter or moderately dry conditions may promote vegetation growth, increasing fuel loads and contributing to larger fires. Meanwhile, fire brightness appears relatively stable across drought levels, reinforcing that combustion dynamics and fuel characteristics, rather than drought severity, primarily shape fire intensity.
+
+# Data Sources
+-   SPEI Index downloaded from the Global SPEI database at <https://spei.csic.es/database.html>.
+
+
