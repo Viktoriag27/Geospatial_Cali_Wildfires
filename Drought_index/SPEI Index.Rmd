@@ -41,7 +41,7 @@ library(ggnewscale)
 library(tidyr)
 ```
 
-# Drough Conditions
+# Drought Conditions
 Water availability and drought conditions are part of the main determinants of wildfire behavior, influencing both the likelihood of ignition and fire spread intensity. In this section, we assess the impact of drought on wildfires using the Standardized Precipitation-Evapotranspiration Index (SPEI). This index measures drought severity by accounting for both precipitation and temperature-driven evapotranspiration. 
 
 By incorporating this index into our analysis, we examine how different levels of drought conditions influenced key wildfire characteristics, including fire duration, fire intensity (brightness), and total acreage burned. Understanding this relationship is essential for assessing the role of water scarcity in wildfire events.
