@@ -1,0 +1,137 @@
+---
+title: "DataPrep"
+author: "Daniela"
+date: "2025-03-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r libraries, include=FALSE}
+library(elevatr)
+library(terra)
+library(sf)  
+library(tigris)
+library(dplyr)
+library(ggplot2)  
+library(viridis)
+```
+
+
+
+## Data Preperation
+
+Before we start to work with our data, we need to prepare it first.
+We have 2 different datasets which we want to use to analyse the behavior of the wildfires better. 
+
+1: The first dataset we have is provided by "California Natrual Resources Agency" and can be accessed by https://data.cnra.ca.gov/dataset/california-fire-perimeters-all
+
+It holds wildfires in California. When filtering them by the year 2020 we end up with 505 different fires.
+In this dataset we see information about the name of the fire, when it started and ended and how much area it covered. 
+It shows the fires as a Polygon which imitate the actual shape of the area the fire covered.
+
+
+2: The second dataset we have is provided by "NASA" and be be accessed by "https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;@-32.5,1.9,3.0z"
+
+It holds wildfires in the US over multiple years. The benefit we get from adding this dataset is an additional parameter "Brightness" which we use as an indicator for the intensity of the fires. 
+
+
+Therefore we merge the two datasets by keeping the "California Natrual Resources Agency"-Data as a "baseline" and finding its "matching" fires in the NASA-dataset.
+Since in the NASA data all fores are stored as point objects and therefore bigger fires in this dataset are represented by multiple points, in such case we add all the brightness-values of these points together and create an average brightness value within one big fire.
+
+```{r, warning=FALSE}
+#____________________________________load fire data_________________________________________________
+fire_data <- st_read("/Users/danielaguggenberger/Documents/Dokumente - MacBook Air von Daniela/BSE/GeoSpatial/project/data/fire/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
+#Since we are only using the 2020 for our analysis we need to filter out the fires happened in that year
+#unique(fire_data$YEAR_)
+fire_data <- fire_data %>% filter(YEAR_==2020)
+
+#Make a new variable (duration) about the length of fire (in days)
+fire_data$ALARM_DATE <- as.Date(fire_data$ALARM_DATE)
+fire_data$CONT_DATE <- as.Date(fire_data$CONT_DATE)
+fire_data$duration <- as.numeric((fire_data$CONT_DATE - fire_data$ALARM_DATE)+1)
+
+
+#____________________________________load NASA fire data____________________________________________
+fire_data_other <- st_read("/Users/danielaguggenberger/Documents/Dokumente - MacBook Air von Daniela/BSE/GeoSpatial/project/data/fire/DL_FIRE_SHP/fire_archive_M-C61_582626.shp")
+
+#the date variable is only stored as a string - transform to date format
+fire_data_other$ACQ_DATE <- as.Date(fire_data_other$ACQ_DATE)
+
+# Extract the year from ACQ_DATE
+fire_data_other$Year <- format(fire_data_other$ACQ_DATE, "%Y")
+
+#again we only want to keep 2020 fires
+fire_data_other <- fire_data_other %>%
+  filter(format(ACQ_DATE, "%Y") == "2020")
+
+
+#___________________________________________merge data_________________________________________________
+# Ensure both datasets have the same CRS for merge
+fire_data <- st_transform(fire_data, crs = st_crs(fire_data_other))
+
+fire_data <- st_make_valid(fire_data)
+fire_data_other <- st_make_valid(fire_data_other)
+
+# Perform spatial join: keep all fires from fire_data and add matching fire_data_other
+merged_fires <- st_join(fire_data, fire_data_other, join = st_contains)
+
+
+
+
+#______________________merge with Name and time
+# Group fires by name AND alarm date to keep separate instances of the same name
+merged_fires_cleaned <- merged_fires %>%
+  group_by(FIRE_NAME, ALARM_DATE) %>%
+  summarise(
+    # Keep one representative record for non-numeric attributes
+    OBJECTID = first(OBJECTID),
+    YEAR_ = first(YEAR_),
+    STATE = first(STATE),
+    AGENCY = first(AGENCY),
+    UNIT_ID = first(UNIT_ID),
+    INC_NUM = first(INC_NUM),
+    CONT_DATE = first(CONT_DATE),
+    CAUSE = first(CAUSE),
+    C_METHOD = first(C_METHOD),
+    OBJECTIVE = first(OBJECTIVE),
+    GIS_ACRES = first(GIS_ACRES),
+    COMMENTS = first(COMMENTS),
+    COMPLEX_NA = first(COMPLEX_NA),
+    IRWINID = first(IRWINID),
+    FIRE_NUM = first(FIRE_NUM),
+    COMPLEX_ID = first(COMPLEX_ID),
+    DECADES = first(DECADES),
+    Shape__Are = first(Shape__Are),
+    Shape__Len = first(Shape__Len),
+    duration = first(duration),
+    geometry = first(geometry),  
+    
+    # Aggregate numeric attributes from fire_data_other
+    avg_brightness = mean(BRIGHTNESS, na.rm = TRUE),
+    avg_confidence = mean(CONFIDENCE, na.rm = TRUE),
+    avg_bright_t31 = mean(BRIGHT_T31, na.rm = TRUE),
+    avg_frp = mean(FRP, na.rm = TRUE),
+    
+    .groups = "drop"
+  )
+
+
+#_______save merged cleaned data
+st_write(merged_fires_cleaned, "/Users/danielaguggenberger/Documents/Dokumente - MacBook Air von Daniela/BSE/GeoSpatial/project/data/merged_fires_cleaned_rmmd.shp")
+
+# Count non-NA values
+num_valid <- sum(!is.na(merged_fires_cleaned$avg_brightness))
+# Count NA values
+num_na <- sum(is.na(merged_fires_cleaned$avg_brightness))
+
+# Print results
+cat("Number of observations with a value in avg_brightness:", num_valid, "\n")
+cat("Number of observations with NA in avg_brightness:", num_na, "\n")
+```
+
+
+We only have 112 fires that are represented in both datasets and therefore we only have the brightness data available for 112 of the 505 we use for our analysis. 
