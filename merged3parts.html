@@ -1724,10 +1724,9 @@ slope_cali &lt;- crop(slope_raster, extent(california_boundary_sf))</code></pre>
 <pre><code>## |---------|---------|---------|---------|=========================================                                          </code></pre>
 <pre class="r"><code>slope_cali_masked &lt;- mask(slope_cali, california_boundary_sf)</code></pre>
 <pre><code>## |---------|---------|---------|---------|=========================================                                          |---------|---------|---------|---------|=========================================                                          </code></pre>
-<pre class="r"><code>fire_data_simplified_cali &lt;- st_intersection(fire_data_simplified, california_boundary_sf)</code></pre>
-<pre><code>## Warning: attribute variables are assumed to be spatially constant throughout
-## all geometries</code></pre>
-<pre class="r"><code># Plot the slope map with wildfires within California
+<pre class="r"><code>fire_data_simplified_cali &lt;- st_intersection(fire_data_simplified, california_boundary_sf)
+
+# Plot the slope map with wildfires within California
 # Plot the slope map with wildfires within California
 plot(slope_cali_masked, main = &quot;Slope (in degrees) with Wildfires (2020) in California&quot;)
 plot(st_geometry(fire_data_simplified_cali), add = TRUE, col = NA, border = &quot;red&quot;, pch = 16, cex = 0.5)</code></pre>

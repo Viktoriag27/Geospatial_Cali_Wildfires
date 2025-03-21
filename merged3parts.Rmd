@@ -1045,7 +1045,7 @@ To download California-specific data we create a coordinate-recktangle which cov
 We decided to load our data with a resolution-parameter of 10 so 30m pp as we want our data as detailed as possible and concidering we are talking about slope which is measured in degrees (0° - 90°) we think a difference of 60m pp is a drastic difference and the loading time of the data does not increase insanly much by settng the relosution that high therefore we think it is worth the tradeoff. Anyways loading the data takes some time, and we don't want to wait each time we run the code, we store this raster-object so we can access it faster.
 As we downloaded just a recktangle of data that covers the area of california but what we are interested in is the shape of the actual state, we now crop this down so it matches the state boundaries.
 
-```{r loadElevationData, message=FALSE, warning=FALSE}
+```{r loadElevationData, message=FALSE, warning=FALSE, pogress=FALSE}
 #Load data about the elevation of California.
 #Got that from a package but then saved it and now only read because the downloading takes some time
 # Define bounding box for California (xmin, ymin, xmax, ymax)
@@ -1086,7 +1086,7 @@ The above seen map indicated the elevation of the land measured in meters where 
 Since we don't want to analyse the relationship about fires and elevation of land but rather with slope of land, we have to compute such a parameter at each point of the land. We do that by manipulating our  elevation data. 
 Once we created a map indicating the slope at each point of land we now assign every FIRE its own slope parameter. Since fires cover more than only a point on the map,  we assign each fire the average slope of the land it covers. 
 
-```{r createSlope}
+```{r createSlope, message=FALSE, warning=FALSE, pogress=FALSE}
 # Compute slope from elevation raster
 slope_raster <- terrain(elevation_cali_raster, v = "slope", unit = "degrees") 
 
@@ -1111,7 +1111,7 @@ fire_data$slope <- fire_slope$slope
 
 Now as we have the data we need in the correct formats, we check if there is a visual relation as we would expect it on the slope of land and the occurrence of wildfires! 
 
-```{r SlopeFireOccurance}
+```{r SlopeFireOccurance, message=FALSE, warning=FALSE, pogress=FALSE}
 #see if there is a relationship between the slope and the occurrence of a fire
 
 #_____first show on map
