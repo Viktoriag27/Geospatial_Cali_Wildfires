@@ -1,11 +1,7 @@
 ---
-title: "California Wildfires 2020"
-subtitle: "A Geospatial Data Analysis 🌍"
-author: |
-  **Irache Vergara**  
-  **Gretchen Moulton**  
-  **Viktoria Gagua**  
-  **Daniela Guggenberger**
+title: "Geospatial Analysis of the 2020 California Wildfires: Environmental Determinants and Implications"
+subtitle: "Final Project - Geospatial Data Science 🌍"
+author: "Irache Vergara, Gretchen Moulton, Viktoria Gagua, Daniela Guggenberger"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output: 
   html_document:
@@ -14,9 +10,7 @@ output:
     number_sections: true
     theme: cosmo
     highlight: tango
-    toc_float: 
-      collapsed: true     # <-- This is our burger menu vibe
-      smooth_scroll: true
+    template: /Users/macbookpro/Desktop/custom_template.html
 editor_options:
   markdown: 
     wrap: sentence
@@ -53,7 +47,8 @@ library(FedData)
 
 # Introduction
 
-Wildfires have long been a part of California’s landscape, but 2020 marked a record-breaking year, with fires burning millions of acres and causing severe damage to communities, ecosystems, and infrastructure.
+Wildfires have long been a part of California’s landscape, but 2020 marked a record-breaking year, with fires burning millions of acres and causing severe damage to communities, ecosystems, and infrastructure (UC Davis Report 2022).
+
 The increasing frequency and severity of wildfires raise important questions about the factors driving these events.
 Understanding the key factors that contribute to wildfires is essential not only for improving prevention and mitigation strategies but also for assessing their broader economic, environmental, and political implications.
 
@@ -62,31 +57,28 @@ Specifically, we investigate:
 
 -   Temperature: How one aspect of weather conditions contribute to fire intensity and spread.
 -   Water availability and drought conditions (SPEI): The impact of humidity and water availability on fire patterns.
--   Elevation: How altitude influences fire behavior and distribution.
--   Proximity to populated areas: The role of roads and urban development in fire ignition and spread.
+-   Elevation: How slope influences fire behavior and distribution.
+-   Proximity to populated areas: The role of urban development in fire ignition and spread.
+-   Land Cover Type: What role does land cover play in determining fire patterns and distribution?
 
 Beyond physical drivers, wildfires have far-reaching economic, environmental, and policy implications, including air quality degradation, public health risks, and land management debates.
-By identifying spatial patterns and correlations, this study seeks to improve understanding of wildfire risks and support more effective mitigation strategies.
+By identifying spatial patterns and correlations, this study seeks to improve understanding of wildfire risks and support more effective mitigation strategies and adaptation solutions.
 
 Our analysis relies on a combination of satellite imagery, environmental monitoring data, and official records to map fire patterns and assess correlations between different factors.
 Through this research, we aim to highlight key insights that can help policymakers, researchers, and communities better understand and manage wildfire risks.
 
-# Data
+# Data Exploration
 
-Load data here and add description about where we got our data from
+First to analysis wildfires in California in 2020, we gather fire perimeter data from the Fire and Resource Assessment Program (FRAP) from California Department of Forestry and Fire Protection. Using this vector data, we can see the outline of each fire and the area burned. We load the cleaned data (cleaning shown in Appendix) that we previously merged with data from NASA Fire Information for Resource Management System (FIRMS) in order to include information on brightness. 
 
-DELETE THIS SECTION LOADING THE DATA (since we will use Daniela's)
+We also load the shape file of the United States from Natural Earth and filter on just the boundary of California. We ensure that the CRS of the wildfire data and the shape of California are the same.  Lastly, we simplify the fire data by reducing the detail of geometries using a tolerance of 20 meters to make computations faster. 
+
 
 ```{r}
 # We will load our data containing spatial data for wildfires in 2020
 url <- "/vsicurl/https://raw.githubusercontent.com/Viktoriag27/Geospatial_Cali_Wildfires/main/merged_fires_cleaned.gpkg"
 fire_data <- st_read(url)
-```
 
-Will keep this since I need this border for my graphs but I am hiding it
-
-```{r, include=FALSE}
-#hiding because this CA border is unique to mine
 # We need to get the California Border shape file by getting US States
 url <- "/vsicurl/https://github.com/Viktoriag27/Geospatial_Cali_Wildfires/raw/main/CA_Outline/ne_110m_admin_1_states_provinces/ne_110m_admin_1_states_provinces.shp"
 US_States <- st_read(url)
@@ -94,11 +86,7 @@ US_States <- st_read(url)
 US_States_simple <- US_States %>% dplyr::select(name, postal, latitude, longitude, geometry)
 # select just CA 
 california_boundary <- US_States_simple %>% filter(postal=="CA")
-```
 
-Delete if we don't have in the first part
-
-```{r}
 # Convert fire data to match California CRS
 fire_data <- st_transform(fire_data, crs = st_crs(california_boundary)) 
 fire_data <- st_make_valid(fire_data)
@@ -107,13 +95,15 @@ fire_data<- st_simplify(fire_data, dTolerance = 20)
 
 ```
 
-Keep this to visualize the data.
+We plot the shape of California and the fire data to see where fires occurred throughout the state in 2020. Fires occurred across the entire state, with large fires tending to occur in the northern region. 
 
 ```{r}
 #Let's see what this looks like
 ggplot()+
  geom_sf(data=california_boundary, fill="lightblue", color = "black")+
- geom_sf(data=fire_data, color = "black") 
+ geom_sf(data=fire_data, color = "black") +
+  ggtitle("Wildfires California 2020") +
+  theme_minimal()
 ```
 
 # Key Variables
@@ -131,7 +121,10 @@ We can see the variation plotted above.
 ggplot()+
   geom_sf(data=california_boundary, fill="lightblue", color = "black")+
   geom_sf(data=fire_data, aes(fill = duration), color = "black") +
-  scale_fill_gradient(low = "pink", high = "darkblue")  
+  scale_fill_gradient(name = "Duration", low = "pink", high = "darkblue")  +
+  ggtitle("Wildfires Duration")+
+  theme_minimal()
+
 
 ```
 
@@ -173,7 +166,9 @@ nrow(fire_data_brightness)
 ggplot()+
   geom_sf(data=california_boundary, fill="lightblue", color = "black")+
   geom_sf(data=fire_data_brightness, aes(fill = avg_brightness), color = "black") +
-  scale_fill_gradient(low = "pink", high = "yellow")  # Adjust gradient colors
+  scale_fill_gradient(name = "Brightness", low = "pink", high = "yellow")+
+  ggtitle("Wildfires Brightness")+
+  theme_minimal()
 ```
 
 ## Fire Size (Acres)
@@ -189,23 +184,22 @@ The fires in this data set ranged from 1 acre to 1,032,700 acres.
 ggplot()+
   geom_sf(data=california_boundary, fill="lightblue", color = "black")+
   geom_sf(data=fire_data, aes(fill = GIS_ACRES), color = "black") +
-  scale_fill_gradient(low = "lightgreen", high = "darkgreen")  
+  scale_fill_gradient(name = "Acreage", low = "lightgreen", high = "darkgreen")+
+  ggtitle("Burned Acreage")+
+  theme_minimal()
 ```
 
-# Temperature
+# Relationship of Temperature and Fire Intensity
 
-## Data Preparation and Exploration
+In this part we investigate the role of weather conditions, specifically air temperature on the intensity of fires.
 
-We will first begin our investigation focusing on the role of weather, specifically air temperature on the intensity of fires.
-
-The US National Oceanic and Atmosphere Administration (NOAA) (<https://www.noaa.gov/noaa-wildfire/wildfire-climate-connection>) explains that climate change has lead to an increase in wildfires.
+The US National Oceanic and Atmosphere Administration (NOAA) explains that climate change has lead to an increase in wildfires.
 More carbon emissions have led to an increase in weather shocks, such as droughts, and an overall warmer climate, creating hotter and drier conditions that are more prone to fire.
 To evaluate the impact of a warming planet on wildfires, we would need to evaluate year over year trends.
 However, we can also investigate the role of short term variations in the weather and to see their impact on wildfires.
 
 One way to do this is to look at fluctuation in temperature throughout one year.
 We gathered GeoTIFF files detailing daily maximum temperatures (tmax) measured in Celsius across the United States from NOAA.
-The data can be accessed here: <https://ftp.cpc.ncep.noaa.gov/GIS/GRADS_GIS/GeoTIFF/TEMP/us_tmax/>.
 Rather than look at raster data from 365 different days in 2020, which computationally was challenging due to the size of the GeoTIFF images, we chose to look at the 15th of each month to identify annual cyclical trends in temperature.
 We chose to work with this data as it was the most detailed and showed variation throughout California.
 When we looked at monthly averages, the national level data was not detailed enough and showed very little variation at the state level on average.
@@ -217,8 +211,11 @@ The best way to study trends in temperature would be to look at monthly averages
 However, due to data limitations neither of these approaches were feasible.
 We note that in the future we could enhance the project by looking at daily or monthly average or max temperatures.
 
+## Data Preparation
+
 To begin our analysis, we first need to identify which fires occurred in which months.
 To organize the data we will create 12 binary variables, 1 for each month, that designate if the fire occurred during that month.
+
 
 ```{r, include=FALSE}
 #hiding because this CA border is unique to mine
@@ -754,7 +751,7 @@ There is very little data for winter and spring and therefore no trends are evid
 From this we can conclude that temperature does not appear to play a large role on fire brightness in our data set; however, it should be noted that a main limitation in this analysis is that only 110 variables had data on brightness, as we had to merge this data from a different fire data set (see Appendix).
 Perhaps if more fires had brightness data, trends would be present in the data.
 
-## Summary
+## Conclusion
 
 From this analysis, it does not appear that higher temperatures lead to more intense fires.
 However, it is important to emphasize this may be due to limitations in the data.
@@ -776,7 +773,7 @@ This data only reflects the 15th of each month and looking at daily max temperat
 Overall, the relationship between temperature and wildfires shows seasonal variation, but we cannot establish a clear pattern between temperature and wildfire intensity.
 We will now explore another aspect of weather that may influence wildfire intensity.
 
-# Drought Conditions
+# Impact of Drought on Fire Behavior
 
 Water availability and drought conditions are part of the main determinants of wildfire behavior, influencing both the likelihood of ignition and fire spread intensity.
 In this section, we assess the impact of drought on wildfires using the Standardized Precipitation-Evapotranspiration Index (SPEI).
@@ -785,16 +782,16 @@ This index measures drought severity by accounting for both precipitation and te
 By incorporating this index into our analysis, we examine how different levels of drought conditions influenced key wildfire characteristics, including fire duration, fire intensity (brightness), and total acreage burned.
 Understanding this relationship is essential for assessing the role of water scarcity in wildfire events.
 
-### Load data
-
-## THIS WILL BE DONE AT THE BEGINING (TO BE DELETED)
+## Data Preparation
 
 We load and process wildfire data for California in 2020, selecting the variables of interest for our analysis.
 For further analyzing the impact of drought conditions accross seasons, we extract the seasons, and retrieve California’s boundary for spatial analysis.
 
-```{r setup1}
+```{r, include=FALSE}
 fire_data <- st_read("https://raw.githubusercontent.com/Viktoriag27/Geospatial_Cali_Wildfires/main/merged_fires_cleaned.gpkg")
+```
 
+```{r setup1}
 # Select relevant columns
 fire_data<- fire_data %>%
   dplyr::select(geom, avg_brightness, ALARM_DATE, duration, GIS_ACRES)
@@ -812,14 +809,15 @@ fire_data <- fire_data %>%
       month %in% c(9, 10, 11) ~ "Fall"
     )
   )
+```
 
+```{r, include= FALSE}
 # Filter fires for 2020
 fire_2020 <- fire_data %>% filter(year == 2020)
 ```
 
-## Spatial processing
 
-```{r setup2, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+```{r setup2, echo=FALSE, message=FALSE, warning=FALSE, results="hide", include=FALSE}
 fire_2020 <- st_transform(fire_2020, 4326)
 
 # Get California boundary
@@ -966,7 +964,7 @@ In contrast, winter and spring show minimal fire activity, making them less rele
 Since the SPEI Index varies significantly across seasons, averaging it over the entire year won't be representative for the purpose of our analysis.
 To capture the true impact of drought on wildfires, we will focus only on the average of summer and fall, where fire activity is most intense and drought conditions are most relevant.
 
-# Drought Analysis
+## Drought Analysis
 
 We create maps to analyze how wildfire duration, brightness (intensity), and acreage burned vary across California in relation to drought conditions to assess whether fires in drier regions tend to burn longer, more intensely, and over larger areas.
 The SPEI Index serves as the background layer, highlighting variations in water availability, while wildfire are mapped using distinct color gradients.
@@ -1036,7 +1034,7 @@ The scatterplot reveals that longer-duration fires tend to occur under wetter co
 This may be because wetter periods promote vegetation growth, increasing fuel availability.
 When these areas eventually ignite, the abundance of fuel can sustain fires for longer durations, suggesting that fuel accumulation, rather than drought severity alone, plays a key role in fire persistence.
 
-### Acreage
+### Burned Acreage
 
 ```{r setup8}
 # Plot acreage
@@ -1065,7 +1063,7 @@ ggplot() +
     plot.background = element_rect(fill = "white", color = NA)
   ) +
   labs(x = "Longitude", y = "Latitude", 
-       title = "Impact of Drought on Burnt Acreage") +
+       title = "Impact of Drought on Burned Acreage") +
   coord_sf(xlim = c(-124, -114), ylim = c(32, 42))  # Adjust plot limits
 ```
 
@@ -1080,13 +1078,13 @@ ggplot(data = fire_filtered, aes(x = SPEI_2020, y = GIS_ACRES)) +
   geom_smooth(method = "lm", color = "red") +
   labs(title = "SPEI Index vs Fire Duration",
        x = "SPEI Index (Drought)",
-       y = "Burnt Acreage") +
+       y = "Burned Acreage") +
   theme_minimal()
 ```
 
-The map illustrates how burnt acreage relates to drought conditions While large wildfires (highlighted in yellow) occur under both moderate and severe drought, we don't see a consistent pattern linking drought to fire size.
+The map illustrates how burned acreage relates to drought conditions While large wildfires (highlighted in yellow) occur under both moderate and severe drought, we don't see a consistent pattern linking drought to fire size.
 This suggests that factors beyond drought, such as fuel accumulation or fire management challenges, may have a stronger influence on wildfire extent.
-The scatter plot reinforces this, showing a weak positive relationship between SPEI and burnt acreage, where larger fires tend to occur under milder drought or wetter conditions.
+The scatter plot reinforces this, showing a weak positive relationship between SPEI and burned acreage, where larger fires tend to occur under milder drought or wetter conditions.
 This pattern may reflect the role of vegetation growth in wetter years, increasing available fuel and supporting larger fires when ignition occurs.
 
 ### Brightness
@@ -1139,21 +1137,20 @@ Factors like wind, oxygen supply, and vegetation type likely play a bigger role 
 The scatterplot supports this, showing little to no correlation between SPEI and brightness.
 This suggests that fire intensity is likely driven by other factors rather than the level of drought stress.
 
-## Main findings
+## Conclusion
 
 In summary, while drought conditions (low SPEI values) are generally more severe in southern California, northern California also experiences localized drought pockets.
 However, larger and longer-lasting wildfires are more common in the north, suggesting that drought alone does not fully explain fire behavior.
-The weak relationship between drought severity and fire duration, burnt acreage, or brightness indicates that factors like fuel accumulation, vegetation density, and local terrain may play a more significant role.
+The weak relationship between drought severity and fire duration, burned acreage, or brightness indicates that factors like fuel accumulation, vegetation density, and local terrain may play a more significant role.
 In fact, wetter or moderately dry conditions may promote vegetation growth, increasing fuel loads and contributing to larger fires.
 Meanwhile, fire brightness appears relatively stable across drought levels, reinforcing that combustion dynamics and fuel characteristics, rather than drought severity, primarily shape fire intensity.
 
-## Elevation and Wildfires
+# Impact of Slope on Wildfire Behavior
 
 In this section we are going to concentrate on the relation of wildfires and the slope of the land.
 Our first intuition is that fires that occure on a highly sloped area, spreads faster and is harder to kill since getting all the machinery there is more complicated than killing fires on flatter land.
-Thinking firther we also notice that generally flat areas are more prain to become populated land where building villiges in sloped areas is harder.
-Therefore sloped areas are more likely to have coverage that is burnable whereas flat areas that are used for housing, manufacturing, ...
-is more likely concrete area which is not going to burn as easily.
+Thinking further we also notice that generally flat areas are more prone to become populated land where building villages in sloped areas is harder.
+Therefore sloped areas are more likely to have coverage that is burnable whereas flat areas that are used for housing, manufacturing, etc. are more likely concrete area which is not going to burn as easily.
 
 ```{r loadMap, echo=FALSE, include=FALSE}
 # Load the shapefile (California state boundary)
@@ -1171,17 +1168,14 @@ fire_data <- st_make_valid(fire_data)
 fire_data_simplified <- st_simplify(fire_data, dTolerance = 100)  
 ```
 
-# Elevation of California
+## Elevation of California
 
-As a first step we need to actually get data on the topic of Elevation.
-The data we use is provided by "AWS" - Amazon Web Services and can be accessed through the package "elevatr".
-To download California-specific data we create a coordinate-recktangle which covers an area of the world surface that contains california and download data resticted to this creates recktangle.
-The resolution of the downloaded data can be chosen in the "z" parameter where 8 stands for resolution 250m per pixel; 9 stands for 90m pp and 10 stands 30m pp.
-We decided to load our data with a resolution-parameter of 10 so 30m pp as we want our data as detailed as possible and concidering we are talking about slope which is measured in degrees (0° - 90°) we think a difference of 60m pp is a drastic difference and the loading time of the data does not increase insanly much by settng the relosution that high therefore we think it is worth the tradeoff.
-Anyways loading the data takes some time, and we don't want to wait each time we run the code, we store this raster-object so we can access it faster.
-As we downloaded just a recktangle of data that covers the area of california but what we are interested in is the shape of the actual state, we now crop this down so it matches the state boundaries.
+As a first step we need to actually get data on the topic of Elevation. The data we use is provided by "AWS" - Amazon Web Services and can be accessed through the package "elevatr".
+To download California-specific data we create a coordinate-rectangle which covers an area of the world surface that contains California and download data restricted to this created rectangle. The resolution of the downloaded data can be chosen in the "z" parameter where 8 stands for resolution 250m per pixel; 9 stands for 90m pp and 10 stands 30m pp.
+We decided to load our data with a resolution-parameter of 10 so 30m pp as we want our data as detailed as possible and considering we are talking about slope which is measured in degrees (0° - 90°) we think a difference of 60m pp is a drastic difference and the loading time of the data does not increase insanely much by setting the resolution that high therefore we think it is worth the trade-off. Anyways loading the data takes some time, and we don't want to wait each time we run the code, we store this raster-object so we can access it faster.
+As we downloaded just a rectangle of data that covers the area of California but what we are interested in is the shape of the actual state, we also crop this down so it matches the state boundaries.
 
-```{r loadElevationData, message=FALSE, warning=FALSE, pogress=FALSE}
+```{r loadElevationData, message=FALSE, warning=FALSE, progress=FALSE}
 #Load data about the elevation of California.
 #Got that from a package but then saved it and now only read because the downloading takes some time
 # Define bounding box for California (xmin, ymin, xmax, ymax)
@@ -1197,12 +1191,6 @@ cali_bbox <- st_as_sf(data.frame(
  
  #elevation_cali <- readRDS("/Users/danielaguggenberger/Documents/Dokumente - MacBook Air von Daniela/BSE/GeoSpatial/project/data/elevation_cali_10.rds")  
 
-#___________________move url up to load only oneC!!!!!!!!!!!!!!!!
-# url <- "https://raw.githubusercontent.com/Viktoriag27/Geospatial_Cali_Wildfires/main/Elevation/elevation_cali.rds"
-# response <- GET(url)
-# writeBin(content(response, "raw"), "elevation_cali.rds")
-# elevation_cali <- readRDS("elevation_cali.rds")
-
 # Convert to SpatRaster format
 elevation_cali_raster <- rast(elevation_cali)
 
@@ -1215,16 +1203,16 @@ cali_elevation_raster_cropped <- crop(elevation_cali_raster, california_boundary
 masked_raster <- mask(cali_elevation_raster_cropped, california_boundary)
 
 # Plot the final result
-plot(masked_raster) 
+plot(masked_raster)
 ```
 
-The above seen map indicated the elevation of the land measured in meters where lighter and more green/yellow areas are higher while darker and blue areas indicate lower aeras of land.
+The above seen map indicated the elevation of the land measured in meters where lighter and more green/yellow areas are higher while darker and blue areas indicate lower areas of land.
 Since we don't want to analyse the relationship about fires and elevation of land but rather with slope of land, we have to compute such a parameter at each point of the land.
 We do that by manipulating our elevation data.
 Once we created a map indicating the slope at each point of land we now assign every FIRE its own slope parameter.
 Since fires cover more than only a point on the map, we assign each fire the average slope of the land it covers.
 
-```{r createSlope, message=FALSE, warning=FALSE, pogress=FALSE}
+```{r createSlope, message=FALSE, warning=FALSE, progress=FALSE}
 # Compute slope from elevation raster
 slope_raster <- terrain(elevation_cali_raster, v = "slope", unit = "degrees") 
 
@@ -1263,7 +1251,6 @@ slope_cali_masked <- mask(slope_cali, california_boundary_sf)
 fire_data_simplified_cali <- st_intersection(fire_data_simplified, california_boundary_sf)
 
 # Plot the slope map with wildfires within California
-# Plot the slope map with wildfires within California
 plot(slope_cali_masked, main = "Slope (in degrees) with Wildfires (2020) in California")
 plot(st_geometry(fire_data_simplified_cali), add = TRUE, col = NA, border = "red", pch = 16, cex = 0.5)
 
@@ -1271,13 +1258,13 @@ plot(st_geometry(fire_data_simplified_cali), add = TRUE, col = NA, border = "red
 ```
 
 The visual inspection indicates what we were expecting.
-We see more fires is brighter areas on the map indicating higher slopes.
-The big dark batch in the middle only has some small fires while way more and way bigger fires occur on the mountainy area around it.
+We see more fires in brighter areas on the map indicating higher slopes.
+The big dark batch in the middle only has some small fires while way more and way bigger fires occur on the mountainous area around it.
 
 Let us now look into that topic further.
-We also want to look at some numbers, therefore we compare the average slope of places that have a fire occured on them in 2020 with the average slope of areas without any fires that year.
-When talking about unburned ares we have to limit analysis to a random sample of places without a fire.
-When taking every point that has no fire in 2020 into account, this gives us an object with the size of 2,6GB which is not feasable for this purpose.
+We also want to look at some numbers, therefore we compare the average slope of places that have a fire occurred on them in 2020 with the average slope of areas without any fires that year.
+When talking about unaffected areas we have to limit analysis to a random sample of places without a fire.
+When taking every point that has no fire in 2020 into account, this gives us an object with the size of 2,6GB which is not feasible for this purpose.
 
 ```{r }
 # Ensure fire data is in the same CRS as the slope raster
@@ -1300,8 +1287,8 @@ sampled_unburned_slope_values <- sample(unburned_slope_values, size = length(unb
 t.test(burned_slope_values, unburned_slope_values)
 
 boxplot(burned_slope_values, sampled_unburned_slope_values,
-        names = c("Burned Areas", "Unburned Areas"),
-        main = "Slope in Burned vs. Unburned Areas",
+        names = c("Burned Areas", "Unaffected Areas"),
+        main = "Slope in Burned vs. Unaffected Areas",
         ylab = "Slope (degrees)", col = c("red", "blue"))
 
 
@@ -1309,22 +1296,20 @@ boxplot(burned_slope_values, sampled_unburned_slope_values,
 
 After the visual inspection we also compute a statistical t-test analyzing our question of interest: Does the slope of places where fires happen differ significantly from the slope of areas where no fires appear?
 
-We create a Welch Two Sample t-test to compares the mean slope of burned areas and unburned areas.
+We create a Welch Two Sample t-test to compare the mean slope of burned areas and unaffected areas.
 As seen above we receive a test-value of 2546.9 already indicating a strong difference between the two groups.
 To check if the difference is statistically significant we observe a p-value \< 2.2e-16 which is clearly under the 0,05 benchmark indicating a highly significant result of our test.
 
 We therefore interpret the following: Fires do not occur randomly—they are significantly more likely in areas with higher slopes.
-Mean Slope of Burned Areas = 13.91° Mean Slope of Unburned Areas (mean of y) = 5.15°
+Mean Slope of Burned Areas = 13.91° Mean Slope of Unaffected (not burned) Areas (mean of y) = 5.15°
 
-## Slope and fire-duration
+## Slope and Fire Duration
 
-Now we know that fires occure more in places with higher slope, we also want to know of there is a relation between the slope and the duration of fires.
+Now we know that fires occur more in places with higher slope, we also want to know of there is a relationship between the slope and the duration of fires.
 
-Now see the magnitude of the relationship between slope and fires
+Now see the magnitude of the relationship between slope and fires.
 
 ```{r SlopeDurationFire}
-# Ensure fire_data is an sf object
-#fire_data <- st_as_sf(fire_data)
 
 # Create a custom color palette 
 custom_palette <- colorRampPalette(c("purple", "orange"))
@@ -1342,7 +1327,7 @@ plot(st_geometry(fire_data_simplified_cali), add = TRUE,
 
 The visual inspection does not get us far here.
 We don't see much difference in the color of the fires indicating its duration.
-Theredore we again look at some numbers.
+Therefore we again look at some numbers.
 
 ```{r }
 # Correlation between slope and fire duration
@@ -1352,23 +1337,18 @@ print(paste("Correlation between slope and fire duration:", correlation))       
 # Linear regression: Fire duration ~ Slope
 model <- lm(fire_data$duration ~ slope, data = fire_data)
 summary(model)
-#This is the change in the fire's duration for every 1-unit increase in slope. 
-#For each degree increase in slope, the fire duration is predicted to increase by 0.8989 units.
-#p-value = 1.41e-11, which is highly significant
-
-
 
 ```
 
 We observe a correlation of 0.274 between the slope and the duration of fires.
 A very easy linear regression of the effect of the slope on the duration without any controls, gives us the statistics shown above.
-Namely a highly significant result indicating a increase of 0,89 days of duration associated with a 1 degree increase of slope.
+Namely a highly significant result indicating a increase of 0.89 days of duration associated with a 1 degree increase of slope.
 This result might seem a bit drastic at first sight but when we think about how slope is measured and how small the differences in most of the places are, we can understand that result better.
 
-## Slope and firesize
+## Slope and fire Size
 
-Related to the last part where we saw a relation between the slope and the occurence of a fire and the relation of the slope and the duration of a fire, we now want to see if there also is a relationship between the slope and the size of the fire.
-We expect to see a relation there due to the increase of duration at areas with higher slope and due the reasoning we gave in the beginning stating that it is harder to kill fires on mroe sloped areas than on flat land which can lead to giving the fire more time to spread.
+Related to the last part where we saw a relationship between the slope and the occurrence of a fire and the relation of the slope and the duration of a fire, we now want to see if there also is a relationship between the slope and the size of the fire.
+We expect to see a relationship there due to the increase of duration at areas with higher slope and due the reasoning we gave in the beginning stating that it is harder to kill fires on more sloped areas than on flat land which can lead to giving the fire more time to spread.
 
 ```{r SizeSlope}
 
@@ -1403,16 +1383,14 @@ As we can see there might be a slight connection between bigger fires and greate
 
 ## Conclusion
 
-Summing up, looking at the effect the slope of the land has on the data we see some impressive relations which mostly agree with our intuition we had in the beginning.
+Summing up, looking at the effect the slope of the land has on the data we see some impressive results which mostly align with our intuition we had in the beginning.
 We see a statistically significant difference in the slope of areas that where burned in 2020 and areas that did not happen to be the place of a fire in said year.
 We observe a clear pattern there.
-Similar hold for the relation between slope and fire duration.
-A increase in the slope by 1° is associated with a 0,89 day increase in the fire duration.
-For the relation between slope and fire size we were not able to see a clear pattern.
+Similar holds for the relationship between slope and fire duration.
+A increase in the slope by 1° is associated with a 0.89 day increase in the fire duration.
+For the relationship between slope and fire size we were not able to see a clear pattern.
 
-# City Proximity and Land Cover Analysis for California Wildfires (2020)
-
-## Motivation
+# Effects of Land Cover and Human Settlement Proximity on Wildfire Behavior
 
 This part of analysis focuses on two critical determinants of wildfire impact:
 
@@ -1421,7 +1399,7 @@ This part of analysis focuses on two critical determinants of wildfire impact:
 (2) the types of land cover affected by these fires.
     These factors are essential for understanding both the human impact and ecological significance of wildfire events.
 
-Understanding the spatial relationship between wildfire perimeters and population centers **is crucial for several reasons**:
+Understanding the spatial relationship between wildfire perimeters and population centers is crucial for several reasons:
 
 -   Emergency Response Planning: By quantifying the distance between fires and communities, emergency management can better prioritize resources and evacuation efforts for the most at-risk populations.
 
@@ -1429,7 +1407,7 @@ Understanding the spatial relationship between wildfire perimeters and populatio
 
 -   Urban-Wildland Interface: As California's development continues to expand into previously wild areas, the interface between human settlements and fire-prone landscapes becomes increasingly important to map and understand.
 
-Our analysis uses geospatial techniques to measure distances between city centroids and fire perimeters, identifying communities within critical distance thresholds (particularly those within 50km of fire boundaries).
+Our analysis uses Geospatial techniques to measure distances between city centroids and fire perimeters, identifying communities within critical distance thresholds (particularly those within 50km of fire boundaries).
 
 ## City Proximity Analysis
 
@@ -1438,17 +1416,18 @@ Our analysis uses geospatial techniques to measure distances between city centro
 data <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
 data <- data %>% filter(YEAR_ == 2020)
 
+# Read the “Places” shapefile
+# Loading this to get info about cities
+places <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/tl_2020_06_place/tl_2020_06_place.shp")
+```
+
+```{r, include=FALSE}
 # Read California State Boundary
 US_States <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/ne_110m_admin_1_states/ne_110m_admin_1_states_provinces.shp")
 US_States_simple <- US_States %>% dplyr::select(name, postal, latitude, longitude, geometry)
 CA <- US_States_simple %>% filter(postal == "CA")
-
-# Read the “Places” shapefile
-# Loading this to get info about cities
-places <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/tl_2020_06_place/tl_2020_06_place.shp")
-colnames(places)
-head(places)
 ```
+
 
 ```{r, warning=FALSE}
 # Reproject all layers to EPSG:3310 at the start
@@ -1482,7 +1461,7 @@ ggplot() +
   geom_sf(data = CA_3310, fill = "white", color = "black") +
   
   # Fire polygons
-  geom_sf(data = data_3310, fill = "yellow", alpha = 0.8, color = "black") +
+  geom_sf(data = data_3310, fill = "yellow", alpha = 0.8, color = "red") +
   
   # City centroids, colored by distance to boundary
   geom_sf(
@@ -1495,7 +1474,7 @@ ggplot() +
   theme_minimal() +
   labs(
     color = "Distance to Fire (m)",
-    title = "California Fires 2020: Distance from Cities to Fire Perimeters (EPSG:3310)"
+    title = "Distance from Cities to Fire Perimeters"
   )
 ```
 
@@ -1547,7 +1526,7 @@ ggplot() +
   ) +
   labs(
     color = "Distance to Fire (m)",
-    title = "CA Fires 2020: Distance from Cities - Less than 50 km"
+    title = "Distance from Cities - Less than 50 km"
   )
 ```
 
@@ -1581,12 +1560,12 @@ cities_50 <- places_ca_centroids_3310 %>%
   arrange(dist_num)               # Rank in ascending order (closest first)
 
 # Extract a list with city names, distances, and coordinates
-cities_list <- dplyr::select(st_drop_geometry(cities_50), NAME, dist_num)
+cities_list <- dplyr::select(st_drop_geometry(cities_50), Community = NAME, Distance = dist_num)
 
 head(cities_list,20)
 ```
 
-First 14 cities actually were at the epicenter of the wildfires;
+First 14 communities actually were at the epicenter of the wildfires;
 
 ### Population-Weighted Risk Analysis for California Wildfires
 
@@ -1619,9 +1598,7 @@ if("POP10" %in% colnames(places) || "POPULATION" %in% colnames(places)) {
     install.packages("tidycensus")
     library(tidycensus)
   }
-  
-  # You'll need a Census API key - get one at https://api.census.gov/data/key_signup.html
-  # census_api_key("YOUR_API_KEY")
+
   
   # Get population data for places in California
   ca_places_pop <- get_decennial(
@@ -1644,9 +1621,7 @@ if("POP10" %in% colnames(places) || "POPULATION" %in% colnames(places)) {
 ```
 
 ```{r, warning=FALSE, message=FALSE}
-########################################################
 # Calculate risk categories based on distance and population
-########################################################
 
 # Add risk categories based on distance
 places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
@@ -1689,9 +1664,7 @@ places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
 ```
 
 ```{r}
-########################################################
 # Create a summary table of highest-risk cities
-########################################################
 high_risk_cities <- places_ca_centroids_3310 %>%
   arrange(desc(risk_index)) %>%
   head(20) %>%
@@ -1705,13 +1678,10 @@ high_risk_cities <- places_ca_centroids_3310 %>%
     risk_index
   ) %>%
   # Rename NAME.x to City for clarity
-  rename(City = NAME.x)
+  rename(Community = NAME.x)
 
 # Print the table
-print(high_risk_cities[, c("City", "Population", "distance_km", "risk_category")])
-
-# Save the table for later use
-# write.csv(high_risk_cities, "high_risk_cities_2020.csv", row.names = FALSE)
+print(high_risk_cities[, c("Community", "Population", "distance_km", "risk_category")])
 
 ```
 
@@ -1732,9 +1702,7 @@ This mathematical transformation maintains the relative relationships between ci
 We believe this weighting approach is important because it avoids the mathematical pitfalls of treating all locations within the buffer zone equally, instead creating a gradient that accurately represents the combined threat of fire proximity and potential human impact.
 
 ```{r}
-########################################################
 # Visualize population-weighted fire risk
-########################################################
 # Before creating the plot, convert risk_category to an ordered factor
 places_ca_centroids_3310 <- places_ca_centroids_3310 %>%
   mutate(
@@ -1778,7 +1746,7 @@ ggplot() +
   # Map styling
   theme_minimal() +
   labs(
-    title = "Population-Weighted Fire Risk in California (2020)",
+    title = "Population-Weighted Fire Risk",
     subtitle = "Circle size indicates population; color indicates risk level based on distance to fires",
     caption = "Data sources: Cal Fire, U.S. Census Bureau"
   )
@@ -1796,9 +1764,6 @@ This approach highlights areas where emergency resources might have been most ne
 The prevalence of large circles in red and dark red zones suggests that a substantial portion of California's population lived under significant wildfire threat during this period.
 
 ```{r}
-########################################################
-# Create a bar chart of population at risk by category
-########################################################
 
 # Summarize population at risk by risk category
 risk_summary <- places_ca_centroids_3310 %>%
@@ -1863,10 +1828,8 @@ The second component examines the relationship between land cover types and fire
 
 Using the National Land Cover Database (NLCD), our analysis categorizes and quantifies the types of land affected by the 2020 fires, with special attention to the distribution between developed (urban/populated) versus natural/other land covers.
 
-```{r, message=FALSE, warning=FALSE}
-#########################################
+```{r, message=FALSE, warning=FALSE, progress=FALSE}
 # NLCD and Fire Perimeter Data Processing
-#########################################
 
 # Load NLCD raster
 nlcd_raster <- rast("/Users/macbookpro/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/Annual_NLCD_LndCov_2020_CU_C1V0.tif")
@@ -1882,10 +1845,10 @@ nlcd_ca <- crop(nlcd_raster, vect(CA), mask = TRUE)
 
 ```{r}
 # Visualize cropped raster
-plot(nlcd_ca, main = "NLCD Land Cover - California (2020)")
+plot(nlcd_ca, main = "NLCD Land Cover")
 ```
 
-```{r, warning=FALSE, message=FALSE}
+```{r, warning=FALSE, message=FALSE, progress=FALSE}
 #Save cropped raster
 writeRaster(nlcd_ca, "NLCD_2020_California.tif", overwrite = TRUE)
 
@@ -1917,15 +1880,10 @@ landcover_summary <- landcover_fire_data %>%
 
 print(landcover_summary)
 
-# # Convert raster to dataframe for plotting
-# nlcd_df <- as.data.frame(nlcd_ca, xy = TRUE, cells = TRUE)
-# colnames(nlcd_df) <- c("x", "y", "Land_Cover_Type")
 ```
 
 ```{r, message=FALSE, warning=FALSE}
-########################################
 # NLCD Raster Processing and Conversion
-########################################
 
 # Reduce raster resolution
 nlcd_ca_resampled <- aggregate(nlcd_ca, fact=10, fun=modal)  # Increase `fact` if necessary
@@ -1973,11 +1931,6 @@ nlcd_poly$Land_Cover_Type <- as.numeric(nlcd_poly$Land_Cover_Type)
 # Merge with land cover labels
 nlcd_poly <- left_join(nlcd_poly, land_cover_labels, by = "Land_Cover_Type")
 
-##
-#Check here if label naming works
-nlcd_poly
-##
-
 # Categorize land use for Developed vs. Natural/Other
 nlcd_poly <- nlcd_poly %>%
   mutate(
@@ -1993,14 +1946,7 @@ if (!"Land_Cover_Name" %in% colnames(nlcd_poly)) {
 ```
 
 ```{r}
-# # Plot using vectorized raster
-# ggplot() +
-#   geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Name)), color = NA) +
-#   geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
-#   labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
-#        fill = "Land Cover Type") +
-#   theme_minimal()
-# Plot with improved color distinction
+# Plot using vectorized raster
 ggplot() +
   geom_sf(data = nlcd_poly, aes(fill = factor(Land_Cover_Name)), color = NA) +
   geom_sf(data = st_transform(fire_perimeters, crs(nlcd_ca)), fill = NA, color = "black", linewidth = 0.3) +
@@ -2022,7 +1968,7 @@ ggplot() +
     "Shrub/Scrub" = "#f6e8c3",                # Light tan
     "Woody Wetlands" = "#542788"              # Purple for Woody Wetlands
   )) +
-  labs(title = "NLCD Land Cover and 2020 Fire Perimeters in California",
+  labs(title = "NLCD Land Cover and 2020 Fire Perimeters",
        fill = "Land Cover Type") +
   theme_minimal()
 ```
@@ -2048,41 +1994,48 @@ ggplot() +
 
 ```
 
-### Findings
+## Conclusion
 
 This part analyzed the relationship between California's 2020 wildfire perimeters and populated areas, creating a comprehensive **assessment of community risk exposure**.
 Through multiple visualizations, we explored how proximity to fires affected different communities and examined the geographical patterns of wildfire risk across diverse landscapes.
-
-### Key components included:
-
--   Mapping fire proximity zones with distance thresholds (0-50km)
--   Developing population-weighted risk metrics
--   Categorizing communities into five risk levels (Extreme to Minimal)
--   Analyzing land cover types in relation to fire perimeters
--   Visualizing the distribution of developed vs. natural areas affected by fires
-
-## Most Compelling Findings
 
 The most striking discovery was the **disproportionate population exposure to high wildfire risk**.
 While California's complex landscape showed fires predominantly affecting forested regions, our population-weighted analysis revealed that over 27 million Californians lived in communities categorized as either "Extreme" or "High" risk.
 This included more than 1,100 distinct settlements, representing an alarming majority of the state's population centers.
 The Central Valley's agricultural corridor appeared to create a partial buffer zone, but many large population centers still fell within critical proximity to fire boundaries, highlighting the vast scale of vulnerability and challenging traditional assumptions about which communities face the greatest wildfire threats.
 
+# Project Summary
+
+This project presented a comprehensive geospatial analysis of the 2020 California wildfires, examining how **environmental factors and human elements** influenced fire behavior during that record-setting season. It utilized satellite imagery, detailed fire perimeter data, and environmental measures such as temperature, drought conditions (via the SPEI index), and terrain features like elevation and slope to investigate the factors driving wildfire intensity, duration, and spread. The study also assessed the proximity of urban areas to active fire zones, thereby identifying the risks faced by communities in densely populated regions.
+
+By integrating diverse datasets and applying advanced spatial analysis techniques, the project delineated **seasonal and regional patterns of wildfire occurrence** while highlighting the **complex interactions between fuel accumulation, weather conditions, and terrain challenges** that affected fire suppression efforts. These insights serve as **essential determinants** that should be taken into consideration when planning emergency response, urban development, and long-term land management, thereby providing a **data-driven framework** for understanding and mitigating wildfire risks in California.
+
+The project acknowledges **several limitations** that do not weaken its overall contributions but point to areas for future improvement. For example, the temperature data only captured the maximum value on one day each month, which means we might have missed short-term shocks or daily extremes that could affect fire behavior. Similarly, the drought analysis used seasonal averages from the SPEI index, which may not fully capture sudden shifts in water availability or fuel moisture during important fire events.
+
+In the case of elevation and slope, the data had to be averaged over large fire areas, so small-scale variations in the terrain might have been overlooked. Additionally, the fire brightness data was not complete, reducing the number of fires we could study for that particular factor.
+
+Overall, these challenges are common in geospatial studies, and despite them, the project still offers a strong, data-driven framework for understanding and managing wildfire risks in California. Future projects could focus on additional variables that may have significant influence on wildfires such as wind speed, fire department expenditure, and temporal terrain analysis.
+
 # Data Sources
 
+-   UC Davis Report 2022 by Kat Kerlin. Accessed at:
+    (<https://www.ucdavis.edu/climate/news/californias-2020-wildfire-season-numbers>)
+
 -   California Fire Perimeters Dataset.
-    accessed at: <https://data.cnra.ca.gov/dataset/california-fire-perimeters-all?utm_source=chatgpt.com>
+    accessed at: (<https://data.cnra.ca.gov/dataset/california-fire-perimeters-all>)
 
 -   Administrative level 1 boundaries, which include states, provinces, and regions within countries from Natural Earth (scale 1:110)
 
+-   The US National Oceanic and Atmosphere Administration (NOAA)         (<https://www.noaa.gov/noaa-wildfire/wildfire-climate-connection>) 
+
 -   TIGER/Line Shapefiles, which are provided by the U.S.
-    Census Bureau containing cities and towns in LA. accessed at: <https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2020&layergroup=Places>
+    Census Bureau containing cities and towns in LA. accessed at: (<https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2020&layergroup=Places>)
 
 -   Annuals NLCD Land Cover Data.
-    Accessed at: <https://www.mrlc.gov/data?f%5B0%5D=category%3ALand%20Cover&f%5B1%5D=project_tax_term_term_parents_tax_term_name%3AAnnual%20NLCD>
+    Accessed at: (<https://www.mrlc.gov/data?f%5B0%5D=category%3ALand%20Cover&f%5B1%5D=project_tax_term_term_parents_tax_term_name%3AAnnual%20NLCD>)
 
--   Wildfire data downloaded from
+-   SPEI Index downloaded from the Global SPEI database at (<https://spei.csic.es/database.html>)
 
--   SPEI Index downloaded from the Global SPEI database at <https://spei.csic.es/database.html>.
+-   Temperature data downloaded from (<https://ftp.cpc.ncep.noaa.gov/GIS/GRADS_GIS/GeoTIFF/TEMP/us_tmax/>)
 
--   Temperature data downloaded from <https://ftp.cpc.ncep.noaa.gov/GIS/GRADS_GIS/GeoTIFF/TEMP/us_tmax/>.
+-   Wildfire data from NASA Fire Information for Resource Management System (FIRMS) data downloaded from  (<https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;@-32.5,1.9,3.0z>)

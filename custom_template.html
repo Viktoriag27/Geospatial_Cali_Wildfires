@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><!-- Will be populated from YAML title --></title>
+  
+  <!-- Bootstrap and Flatly theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/4.6.0/flatly/bootstrap.min.css">
+  
+  <!-- Highlight.js for code highlighting with tango style -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/tango.min.css">
+  
+  <style>
+    body {
+      padding-top: 20px;
+    }
+    
+    .page-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 30px;
+    }
+    
+    #TOC {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 280px;
+      height: 100%;
+      overflow-y: auto;
+      padding: 20px;
+      z-index: 1000;
+      background-color: #f8f9fa;
+      border-right: 1px solid #dee2e6;
+      transition: transform 0.3s ease;
+      transform: translateX(-280px); /* Start hidden */
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    #TOC.active {
+      transform: translateX(0);
+    }
+    
+    #TOC-toggle {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1001;
+      border-radius: 4px;
+      padding: 6px 10px;
+      background-color: #2C3E50;
+      color: white;
+      border: none;
+      font-size: 18px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: left 0.3s ease;
+    }
+    
+    #TOC.active + .page-container #TOC-toggle {
+      left: 290px;
+    }
+    
+    /* For smooth scrolling */
+    html {
+      scroll-behavior: smooth;
+    }
+    
+    /* Academic-style headers */
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 2rem;
+      font-weight: bold;
+    }
+    
+    .main-title {
+      font-size: 1.8rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    
+    .subtitle {
+      font-size: 1.3rem;
+      font-weight: normal;
+      color: #555;
+      margin-bottom: 1rem;
+    }
+    
+    .authors {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .date {
+      font-size: 0.9rem;
+      font-style: italic;
+      margin-bottom: 1.5rem;
+    }
+    
+    h1 {
+      font-size: 1.5rem;
+    }
+    
+    h2 {
+      font-size: 1.3rem;
+    }
+    
+    h3 {
+      font-size: 1.1rem;
+    }
+    
+    p, li {
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+    
+    /* Styles for the TOC links */
+    #TOC ul {
+      list-style-type: none;
+      padding-left: 10px;
+    }
+    
+    #TOC > ul > li {
+      margin-top: 10px;
+    }
+    
+    #TOC ul a {
+      text-decoration: none;
+      color: #495057;
+      display: block;
+      padding: 4px 0;
+    }
+    
+    #TOC ul a:hover {
+      color: #007bff;
+    }
+
+    /* Code chunk styling */
+    pre {
+      background-color: #f8f8f8;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      padding: 16px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    
+    pre code {
+      background-color: transparent;
+      padding: 0;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      display: block;
+      overflow-x: auto;
+    }
+    
+    /* R code chunk header */
+    .r-code-header {
+      background-color: #f1f1f1;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      border-radius: 3px 3px 0 0;
+      padding: 8px 12px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      color: #666;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+      margin-bottom: -1px;
+    }
+    
+    /* Connect the header to its code block */
+    .r-code-header + pre {
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      margin-top: 0;
+    }
+    
+    /* Output styling */
+    .output-header {
+      background-color: #e8f4f8;
+      border: 1px solid #d1e0e5;
+      border-bottom: none;
+      border-radius: 3px 3px 0 0;
+      padding: 8px 12px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      color: #555;
+      margin-top: 10px;
+      margin-bottom: -1px;
+    }
+    
+    .output-container {
+      background-color: #f5f9fa;
+      border: 1px solid #d1e0e5;
+      border-radius: 0 0 3px 3px;
+      padding: 12px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+    
+    /* For inline code */
+    code {
+      background-color: #f1f1f1;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85em;
+      color: #e83e8c;
+    }
+    $if(number-sections)$
+    body {counter-reset: section;}
+    h1 {counter-reset: subsection;}
+    h2 {counter-reset: subsubsection;}
+    
+    h1:before {
+      counter-increment: section;
+      content: counter(section) ". ";
+    }
+    
+    h2:before {
+      counter-increment: subsection;
+      content: counter(section) "." counter(subsection) " ";
+    }
+    
+    h3:before {
+      counter-increment: subsubsection;
+      content: counter(section) "." counter(subsection) "." counter(subsubsection) " ";
+    }
+    $endif$
+  </style>
+</head>
+<body>
+  <!-- Table of Contents -->
+  $if(toc)$
+  <div id="TOC">
+    $table-of-contents$
+  </div>
+  $endif$
+
+  <div class="page-container">
+    <!-- TOC toggle button (burger menu) -->
+    <button id="TOC-toggle" class="btn">
+      <span>☰</span>
+    </button>
+    <!-- Header with title, subtitle, author, date -->
+    <header>
+      <h1 class="main-title">$title$</h1>
+      $if(subtitle)$
+      <h2 class="subtitle">$subtitle$</h2>
+      $endif$
+      $if(author)$
+      <p class="authors">$author$</p>
+      $endif$
+      $if(date)$
+      <p class="date">$date$</p>
+      $endif$
+      <hr>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+      $body$
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.0/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  
+  <script>
+    // Add R code block headers
+    document.addEventListener('DOMContentLoaded', () => {
+      // Highlight all code blocks
+      document.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+        
+        // Check if this is an R code block
+        const parentPre = block.parentElement;
+        if (block.classList.contains('language-r') || block.classList.contains('r')) {
+          // Create header element
+          const header = document.createElement('div');
+          header.className = 'r-code-header';
+          header.innerHTML = 'R';
+          
+          // Insert header before the pre element
+          parentPre.parentNode.insertBefore(header, parentPre);
+        }
+      });
+    });
+    
+    // Handle TOC toggle functionality (burger menu)
+    document.getElementById('TOC-toggle').addEventListener('click', function(e) {
+      e.stopPropagation(); // Prevent event from propagating to document
+      const toc = document.getElementById('TOC');
+      toc.classList.toggle('active');
+    });
+    
+    // Close TOC when clicking on a link
+    document.querySelectorAll('#TOC a').forEach(link => {
+      link.addEventListener('click', () => {
+        document.getElementById('TOC').classList.remove('active');
+      });
+    });
+    
+    // Close TOC when clicking outside
+    document.addEventListener('click', function(event) {
+      const toc = document.getElementById('TOC');
+      const tocButton = document.getElementById('TOC-toggle');
+      
+      if (!toc.contains(event.target) && !tocButton.contains(event.target) && toc.classList.contains('active')) {
+        toc.classList.remove('active');
+      }
+    });
+  </script>
+</body>
+</html>
