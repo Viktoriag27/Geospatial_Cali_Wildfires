@@ -4,13 +4,12 @@ subtitle: "Final Project - Geospatial Data Science 🌍"
 author: "Irache Vergara, Gretchen Moulton, Viktoria Gagua, Daniela Guggenberger"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output: 
-  html_document:
+  rmarkdown::html_document:
     toc: true
     toc_depth: 3
     number_sections: true
-    theme: cosmo
+    theme: flatly
     highlight: tango
-    template: /Users/macbookpro/Desktop/custom_template.html
 editor_options:
   markdown: 
     wrap: sentence
