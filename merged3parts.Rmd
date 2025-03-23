@@ -836,7 +836,7 @@ Finally, we rename the columns and compute the annual average SPEI for 2020 to p
 
 ```{r setup3, message=FALSE, warning=FALSE, results="hide"}
 # Load NetCDF file
-nc_file <- "~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/Geospatial_alltogether/spei01.nc"
+nc_file <- "/Users/gretchenmoulton/Documents/GeoSpatial/share_2/spei01.nc"
 spei_data <- rast(nc_file)
 
 # Extract time values
@@ -1153,7 +1153,7 @@ Therefore sloped areas are more likely to have coverage that is burnable whereas
 
 ```{r loadMap, echo=FALSE, include=FALSE}
 # Load the shapefile (California state boundary)
-california_boundary <- vect("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/Geospatial_alltogether/ca_state/CA_State.shp")
+california_boundary <- vect("/Users/gretchenmoulton/Documents/GeoSpatial/share_2/ca_state/CA_State.shp")
 
 # Ensure `cali_map` is a SpatVector
 california_boundary <- project(california_boundary, "EPSG:4326")  
@@ -1412,26 +1412,29 @@ Our analysis uses Geospatial techniques to measure distances between city centro
 
 ```{r, message=FALSE, warning=FALSE}
 # Read Fire Data (2020 only)
-data <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
+data <- st_read("/Users/gretchenmoulton/Documents/GeoSpatial/share_2/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp")
 data <- data %>% filter(YEAR_ == 2020)
 
 # Read the “Places” shapefile
 # Loading this to get info about cities
-places <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/tl_2020_06_place/tl_2020_06_place.shp")
+places <- st_read("/Users/gretchenmoulton/Documents/GeoSpatial/tl_2020_06_place/tl_2020_06_place.shp")
 ```
 
 ```{r, include=FALSE}
 # Read California State Boundary
-US_States <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/ne_110m_admin_1_states/ne_110m_admin_1_states_provinces.shp")
+url <- "/vsicurl/https://github.com/Viktoriag27/Geospatial_Cali_Wildfires/raw/main/CA_Outline/ne_110m_admin_1_states_provinces/ne_110m_admin_1_states_provinces.shp"
+US_States <- st_read(url)
+# too many columns to work with, we will select fewer
 US_States_simple <- US_States %>% dplyr::select(name, postal, latitude, longitude, geometry)
-CA <- US_States_simple %>% filter(postal == "CA")
+# select just CA 
+california_boundary <- US_States_simple %>% filter(postal=="CA")
 ```
 
 
 ```{r, warning=FALSE}
 # Reproject all layers to EPSG:3310 at the start
 data_3310 <- st_transform(data, 3310)
-CA_3310 <- st_transform(CA, 3310)
+CA_3310 <- st_transform(california_boundary, 3310)
 places_ca_centroids_3310 <- st_centroid(st_transform(places, 3310)) 
 
 # Combine all fire polygons into one and compute centroid
@@ -1827,15 +1830,23 @@ The second component examines the relationship between land cover types and fire
 
 Using the National Land Cover Database (NLCD), our analysis categorizes and quantifies the types of land affected by the 2020 fires, with special attention to the distribution between developed (urban/populated) versus natural/other land covers.
 
+```{r, include=FALSE}
+url <- "/vsicurl/https://github.com/Viktoriag27/Geospatial_Cali_Wildfires/raw/main/CA_Outline/ne_110m_admin_1_states_provinces/ne_110m_admin_1_states_provinces.shp"
+US_States <- st_read(url)
+# too many columns to work with, we will select fewer
+US_States_simple <- US_States %>% dplyr::select(name, postal, latitude, longitude, geometry)
+# select just CA 
+CA <- US_States_simple %>% filter(postal=="CA")
+```
+
 ```{r, message=FALSE, warning=FALSE, progress=FALSE}
 # NLCD and Fire Perimeter Data Processing
 
 # Load NLCD raster
-nlcd_raster <- rast("/Users/macbookpro/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/Annual_NLCD_LndCov_2020_CU_C1V0.tif")
+nlcd_raster <- rast("/Users/gretchenmoulton/Documents/GeoSpatial/Annual_NLCD_LndCov_2020_CU_C1V0.tif")
 
-# Load California boundary and reproject to match raster CRS
-CA <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/ne_110m_admin_1_states/ne_110m_admin_1_states_provinces.shp") %>%
-  filter(postal == "CA") %>%
+# Reproject CA boundary to match raster CRS
+CA <- california_boundary %>%
   st_transform(crs(nlcd_raster))
 
 # Convert California boundary to terra format and crop raster
@@ -1852,10 +1863,10 @@ plot(nlcd_ca, main = "NLCD Land Cover")
 writeRaster(nlcd_ca, "NLCD_2020_California.tif", overwrite = TRUE)
 
 # Load California Land Cover Raster
-nlcd_ca <- rast("/Users/macbookpro/NLCD_2020_California.tif")
+nlcd_ca <- rast("/Users/gretchenmoulton/Documents/GeoSpatial/NLCD_2020_California.tif")
 
 # Load and clean 2020 fire perimeters, ensuring CRS consistency
-fire_perimeters <- st_read("~/Desktop/Victoria/DSDM/Term2/Geospatial/Final_Project/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp") %>%
+fire_perimeters <- st_read("/Users/gretchenmoulton/Documents/GeoSpatial/share_2/California_Fire_Perimeters_(all)/California_Fire_Perimeters_(all).shp") %>%
   filter(YEAR_ == 2020) %>%
   st_make_valid() %>%
   filter(!st_is_empty(.)) %>%
